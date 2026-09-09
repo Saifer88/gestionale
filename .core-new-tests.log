@@ -1,0 +1,35 @@
+[0/1] Planning build
+Building for debugging...
+[0/9] Write sources
+[3/9] Write swift-version--58304C5D6DBC2206.txt
+[5/11] Emitting module PaolaCore
+[6/11] Compiling PaolaCore BusinessReports.swift
+[7/29] Compiling PaolaCoreTests AppointmentPreferencesTests.swift
+[8/29] Compiling PaolaCoreTests ArchiveV3Tests.swift
+[9/29] Emitting module PaolaCoreTests
+[10/29] Compiling PaolaCoreTests AutomaticIncomeTests.swift
+[11/29] Compiling PaolaCoreTests BusinessArchiveTests.swift
+[12/29] Compiling PaolaCoreTests ClientSensitiveFieldsTests.swift
+[13/29] Compiling PaolaApp OverviewView.swift
+[14/30] Compiling PaolaApp SettingsView.swift
+[15/31] Compiling PaolaApp AppNavigation.swift
+[16/31] Compiling PaolaApp ServicesViews.swift
+[17/31] Compiling PaolaApp ReportsViews.swift
+[18/31] Compiling PaolaApp PaymentsViews.swift
+[19/31] Compiling PaolaApp IncomeSummary.swift
+[20/31] Compiling PaolaApp PackagesViews.swift
+[21/31] Compiling PaolaApp BusinessExport.swift
+[22/31] Compiling PaolaApp BusinessSummaryViews.swift
+[23/31] Compiling PaolaApp AgendaViews.swift
+[24/31] Compiling PaolaApp AppointmentQuickChoices.swift
+[25/31] Emitting module PaolaApp
+[26/31] Compiling PaolaApp SessionEditor.swift
+/Users/pirrima001/coding/personal/paola_gestionale/Sources/PaolaApp/BusinessViews/SessionEditor.swift:49:9: error: the compiler is unable to type-check this expression in reasonable time; try breaking up the expression into distinct sub-expressions
+ 47 |     private var readOnly: Bool { session?.status == .completed || originalParticipants.count > 1 }
+ 48 |     private var readError: Error? {
+ 49 |         _clients.fetchError ?? _services.fetchError ?? _participants.fetchError ?? _packages.fetchError
+    |         `- error: the compiler is unable to type-check this expression in reasonable time; try breaking up the expression into distinct sub-expressions
+ 50 |             ?? _uses.fetchError ?? _sessions.fetchError ?? _blocks.fetchError ?? _rates.fetchError ?? _preferences.fetchError
+ 51 |     }
+[27/32] Compiling PaolaApp ClientDetailView.swift
+error: fatalError

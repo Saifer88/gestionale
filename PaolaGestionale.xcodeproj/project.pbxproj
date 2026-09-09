@@ -1,0 +1,424 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 70;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* PaolaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* PaolaApp.swift */; };
+		A10000000000000000000002 /* AppNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AppNavigation.swift */; };
+		A10000000000000000000003 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* SharedViews.swift */; };
+		A10000000000000000000004 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* OverviewView.swift */; };
+		A10000000000000000000005 /* ClientsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ClientsView.swift */; };
+		A10000000000000000000006 /* ClientDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ClientDetailView.swift */; };
+		A10000000000000000000007 /* ClientEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* ClientEditor.swift */; };
+		A10000000000000000000008 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* SettingsView.swift */; };
+		A10000000000000000000009 /* PaolaCore in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* PaolaCore */; };
+		B10000000000000000000001 /* ClientWorkflowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* ClientWorkflowUITests.swift */; };
+		C10000000000000000000001 /* StorageCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* StorageCoordinator.swift */; };
+		C10000000000000000000002 /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* BackupView.swift */; };
+		C10000000000000000000003 /* ReminderSchedulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* ReminderSchedulerView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B90000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000000000000000000001;
+			remoteInfo = PaolaGestionaleApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* PaolaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaolaApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* AppNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNavigation.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* SharedViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* ClientsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* ClientDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientDetailView.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* ClientEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientEditor.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* PaolaGestionale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PaolaGestionale.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000000000000000000000B /* PaolaGestionale.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PaolaGestionale.entitlements; sourceTree = "<group>"; };
+		A2000000000000000000000C /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = App.xcconfig; sourceTree = "<group>"; };
+		B20000000000000000000001 /* ClientWorkflowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientWorkflowUITests.swift; sourceTree = "<group>"; };
+		B20000000000000000000002 /* PaolaGestionaleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PaolaGestionaleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C20000000000000000000001 /* StorageCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageCoordinator.swift; sourceTree = "<group>"; };
+		C20000000000000000000002 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
+		C20000000000000000000003 /* ReminderSchedulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderSchedulerView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		C40000000000000000000001 /* BusinessViews */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BusinessViews; sourceTree = "<group>"; };
+		C40000000000000000000002 /* Protection */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Protection; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000009 /* PaolaCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* PaolaApp */,
+				A40000000000000000000003 /* App */,
+				A40000000000000000000004 /* Config */,
+				A40000000000000000000005 /* Products */,
+				B40000000000000000000001 /* UITests */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* PaolaApp */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* PaolaApp.swift */,
+				A20000000000000000000002 /* AppNavigation.swift */,
+				A20000000000000000000003 /* SharedViews.swift */,
+				A20000000000000000000004 /* OverviewView.swift */,
+				A20000000000000000000005 /* ClientsView.swift */,
+				A20000000000000000000006 /* ClientDetailView.swift */,
+				A20000000000000000000007 /* ClientEditor.swift */,
+				A20000000000000000000008 /* SettingsView.swift */,
+				C20000000000000000000001 /* StorageCoordinator.swift */,
+				C20000000000000000000002 /* BackupView.swift */,
+				C20000000000000000000003 /* ReminderSchedulerView.swift */,
+				C40000000000000000000001 /* BusinessViews */,
+				C40000000000000000000002 /* Protection */,
+			);
+			name = PaolaApp;
+			path = Sources/PaolaApp;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000A /* Info.plist */,
+				A2000000000000000000000B /* PaolaGestionale.entitlements */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000C /* App.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000009 /* PaolaGestionale.app */,
+				B20000000000000000000002 /* PaolaGestionaleUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B40000000000000000000001 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000001 /* ClientWorkflowUITests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* PaolaGestionaleApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "PaolaGestionaleApp" */;
+			buildPhases = (
+				A30000000000000000000002 /* Sources */,
+				A30000000000000000000001 /* Frameworks */,
+				A30000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C40000000000000000000001 /* BusinessViews */,
+				C40000000000000000000002 /* Protection */,
+			);
+			name = PaolaGestionaleApp;
+			packageProductDependencies = (
+				A90000000000000000000002 /* PaolaCore */,
+			);
+			productName = PaolaGestionale;
+			productReference = A20000000000000000000009 /* PaolaGestionale.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B50000000000000000000001 /* PaolaGestionaleUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B80000000000000000000001 /* Build configuration list for PBXNativeTarget "PaolaGestionaleUITests" */;
+			buildPhases = (
+				B30000000000000000000001 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B90000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = PaolaGestionaleUITests;
+			productName = PaolaGestionaleUITests;
+			productReference = B20000000000000000000002 /* PaolaGestionaleUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A60000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A50000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+						ProvisioningStyle = Automatic;
+					};
+					B50000000000000000000001 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = A50000000000000000000001;
+					};
+				};
+			};
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "PaolaGestionale" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = it;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				it,
+				Base,
+			);
+			mainGroup = A40000000000000000000001;
+			packageReferences = (
+				A90000000000000000000001 /* XCLocalSwiftPackageReference "." */,
+			);
+			productRefGroup = A40000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A50000000000000000000001 /* PaolaGestionaleApp */,
+				B50000000000000000000001 /* PaolaGestionaleUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A30000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A30000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* PaolaApp.swift in Sources */,
+				A10000000000000000000002 /* AppNavigation.swift in Sources */,
+				A10000000000000000000003 /* SharedViews.swift in Sources */,
+				A10000000000000000000004 /* OverviewView.swift in Sources */,
+				A10000000000000000000005 /* ClientsView.swift in Sources */,
+				A10000000000000000000006 /* ClientDetailView.swift in Sources */,
+				A10000000000000000000007 /* ClientEditor.swift in Sources */,
+				A10000000000000000000008 /* SettingsView.swift in Sources */,
+				C10000000000000000000001 /* StorageCoordinator.swift in Sources */,
+				C10000000000000000000002 /* BackupView.swift in Sources */,
+				C10000000000000000000003 /* ReminderSchedulerView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B30000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001 /* ClientWorkflowUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B90000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000000000000000000001 /* PaolaGestionaleApp */;
+			targetProxy = B90000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A70000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A2000000000000000000000C /* App.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A70000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A2000000000000000000000C /* App.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		A70000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = "$(PAOLA_IOS_ENTITLEMENTS)";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "$(PAOLA_MAC_ENTITLEMENTS)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_NAME = PaolaGestionale;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A70000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = "$(PAOLA_IOS_ENTITLEMENTS)";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "$(PAOLA_MAC_ENTITLEMENTS)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_NAME = PaolaGestionale;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		B70000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).UITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = PaolaGestionaleApp;
+			};
+			name = Debug;
+		};
+		B70000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).UITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = PaolaGestionaleApp;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXProject "PaolaGestionale" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000001 /* Debug */,
+				A70000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "PaolaGestionaleApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000003 /* Debug */,
+				A70000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B80000000000000000000001 /* Build configuration list for PBXNativeTarget "PaolaGestionaleUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B70000000000000000000001 /* Debug */,
+				B70000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A90000000000000000000001 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A90000000000000000000002 /* PaolaCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A90000000000000000000001 /* XCLocalSwiftPackageReference "." */;
+			productName = PaolaCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A60000000000000000000001 /* Project object */;
+}

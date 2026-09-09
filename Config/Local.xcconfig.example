@@ -1,0 +1,9 @@
+// Copiare in Local.xcconfig prima dell'installazione con Xcode.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+PRODUCT_BUNDLE_IDENTIFIER = it.example.PaolaGestionale
+
+// Abilitare solo dopo aver creato e associato il container al proprio team Apple.
+// PAOLA_CLOUD_ENABLED = YES
+// PAOLA_CLOUD_CONTAINER = iCloud.it.example.PaolaGestionale
+// PAOLA_MAC_ENTITLEMENTS = App/Cloud.macOS.entitlements
+// PAOLA_IOS_ENTITLEMENTS = App/Cloud.iOS.entitlements

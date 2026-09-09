@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:paola_gestionale}",
+            "name": "Debug PaolaGestionale",
+            "target": "PaolaGestionale",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug PaolaGestionale"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:paola_gestionale}",
+            "name": "Release PaolaGestionale",
+            "target": "PaolaGestionale",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release PaolaGestionale"
+        }
+    ]
+}

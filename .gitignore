@@ -1,0 +1,14 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+/build/
+/Config/Local.xcconfig
+*.xcuserstate
+*.store
+*.store-shm
+*.store-wal

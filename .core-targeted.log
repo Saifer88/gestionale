@@ -1,0 +1,216 @@
+[0/1] Planning build
+Building for debugging...
+[0/9] Write sources
+[3/9] Write swift-version--58304C5D6DBC2206.txt
+[5/19] Compiling PaolaCore SchemaV4.swift
+[6/19] Compiling PaolaCore StoreFactory.swift
+[7/19] Compiling PaolaCore SchedulingSuggestions.swift
+[8/19] Compiling PaolaCore BusinessRepository.swift
+[9/19] Compiling PaolaCore BusinessModels.swift
+[10/19] Emitting module PaolaCore
+[11/19] Compiling PaolaCore Client.swift
+[12/19] Compiling PaolaCore BusinessArchive.swift
+[13/19] Compiling PaolaCore AppointmentPreferences.swift
+[14/19] Compiling PaolaCore ArchiveSnapshot.swift
+[15/21] Compiling PaolaCore Money.swift
+[16/21] Compiling PaolaCore BusinessReports.swift
+[17/62] Compiling PaolaApp AppNavigation.swift
+[18/62] Compiling PaolaApp BackupView.swift
+[19/62] Compiling PaolaApp ClientDetailView.swift
+[20/62] Compiling PaolaApp ReminderSchedulerView.swift
+[21/62] Compiling PaolaApp ClientsView.swift
+[22/62] Compiling PaolaApp SessionEditor.swift
+[23/62] Emitting module PaolaCoreTests
+[24/62] Compiling PaolaApp PaolaApp.swift
+[25/62] Compiling PaolaApp ReportsViews.swift
+[26/62] Compiling PaolaApp AgendaViews.swift
+[27/62] Compiling PaolaApp OverviewView.swift
+[28/62] Compiling PaolaApp PackagesViews.swift
+[29/62] Compiling PaolaApp PaymentsViews.swift
+[30/62] Compiling PaolaApp SettingsView.swift
+[31/62] Compiling PaolaApp AppointmentQuickChoices.swift
+[32/62] Compiling PaolaApp ServicesViews.swift
+[33/62] Compiling PaolaApp ClientEditor.swift
+[34/62] Compiling PaolaApp AppointmentSelection.swift
+[35/62] Compiling PaolaApp BusinessExport.swift
+[36/63] Compiling PaolaCoreTests TestSupport.swift
+[49/65] Compiling PaolaApp BusinessFormatting.swift
+[50/65] Compiling PaolaApp BusinessSummaryViews.swift
+[51/65] Compiling PaolaApp BusinessSupport.swift
+[52/65] Emitting module PaolaApp
+[59/65] Compiling PaolaApp SharedViews.swift
+[60/65] Compiling PaolaApp StorageCoordinator.swift
+[60/65] Write Objects.LinkFileList
+[61/65] Linking PaolaGestionale
+[62/65] Applying PaolaGestionale
+[64/67] Emitting module PaolaAppTests
+[65/67] Compiling PaolaAppTests BusinessExportTests.swift
+[65/67] Write Objects.LinkFileList
+[66/67] Linking PaolaGestionalePackageTests
+Build complete! (8.09s)
+Test Suite 'Selected tests' started at 2026-09-09 14:09:36.435.
+Test Suite 'PaolaGestionalePackageTests.xctest' started at 2026-09-09 14:09:36.438.
+Test Suite 'ArchiveSnapshotTests' started at 2026-09-09 14:09:36.438.
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testEncryptedCompleteArchiveRestoresClientsSessionsPackagesAndBalances]' started.
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testEncryptedCompleteArchiveRestoresClientsSessionsPackagesAndBalances]' passed (0.275 seconds).
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testInvalidBackupReferencesAreRejectedBeforeCreatingStore]' started.
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testInvalidBackupReferencesAreRejectedBeforeCreatingStore]' passed (0.005 seconds).
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testMissingSelectedRestoreDoesNotSilentlyCreateAnEmptyArchive]' started.
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testMissingSelectedRestoreDoesNotSilentlyCreateAnEmptyArchive]' passed (0.005 seconds).
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testUnsupportedVersionAndDuplicateClientsAreRejected]' started.
+Test Case '-[PaolaCoreTests.ArchiveSnapshotTests testUnsupportedVersionAndDuplicateClientsAreRejected]' passed (0.004 seconds).
+Test Suite 'ArchiveSnapshotTests' passed at 2026-09-09 14:09:36.729.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.290 (0.290) seconds
+Test Suite 'BusinessArchiveTests' started at 2026-09-09 14:09:36.729.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testArchiveRejectsElevenDistinctPackageUses]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testArchiveRejectsElevenDistinctPackageUses]' passed (0.041 seconds).
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testArchiveRejectsInvalidReferencesIDsEnumsMoneyDatesAndPairSize]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testArchiveRejectsInvalidReferencesIDsEnumsMoneyDatesAndPairSize]' passed (0.041 seconds).
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testCanonicalizationIgnoresOrderButEqualityDetectsMetadataChanges]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testCanonicalizationIgnoresOrderButEqualityDetectsMetadataChanges]' passed (0.038 seconds).
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testConflictingSourceInStorePreventsAnyRepositoryWrite]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testConflictingSourceInStorePreventsAnyRepositoryWrite]' passed (0.040 seconds).
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testDuplicateLogicalSourcesAreDeduplicatedButConflictsAndOverRefundAreRejected]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testDuplicateLogicalSourcesAreDeduplicatedButConflictsAndOverRefundAreRejected]' passed (0.038 seconds).
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testInvalidInsertNeverChangesTargetContext]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testInvalidInsertNeverChangesTargetContext]' passed (0.041 seconds).
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testJSONRoundTripPreservesAllRecordsIDsMetadataAndInsertDoesNotSave]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testJSONRoundTripPreservesAllRecordsIDsMetadataAndInsertDoesNotSave]' passed (0.046 seconds).
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testRealReadOnlySaveFailureLeavesUIAndDiskUnchanged]' started.
+Test Case '-[PaolaCoreTests.BusinessArchiveTests testRealReadOnlySaveFailureLeavesUIAndDiskUnchanged]' passed (0.015 seconds).
+Test Suite 'BusinessArchiveTests' passed at 2026-09-09 14:09:37.029.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.300 (0.301) seconds
+Test Suite 'BusinessRepositoryTests' started at 2026-09-09 14:09:37.029.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testCancelledAndNoShowHaveNoFinancialEffectAndCanBeReplanned]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testCancelledAndNoShowHaveNoFinancialEffectAndCanBeReplanned]' passed (0.019 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testFailedSaveDoesNotMutateObservedObjectsAndRetryIsSafe]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testFailedSaveDoesNotMutateObservedObjectsAndRetryIsSafe]' passed (0.016 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testFailedServiceEditAndBlockDeletePreserveObservedValues]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testFailedServiceEditAndBlockDeletePreserveObservedValues]' passed (0.009 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testHistoricalPriceAndServiceNameSurviveCatalogEdit]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testHistoricalPriceAndServiceNameSurviveCatalogEdit]' passed (0.015 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testInvalidDatesDurationsServicesAndMonetaryOverflowLeaveStoreClean]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testInvalidDatesDurationsServicesAndMonetaryOverflowLeaveStoreClean]' passed (0.008 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testOverlapAdjacentAndExplicitOverrideIncludingBlocks]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testOverlapAdjacentAndExplicitOverrideIncludingBlocks]' passed (0.029 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testPairMixedPackageAndCashCreatesOnlyCorrectCharge]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testPairMixedPackageAndCashCreatesOnlyCorrectCharge]' passed (0.012 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testPairWithTwoPackagesConsumesEachOnceAndWorksOneHour]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testPairWithTwoPackagesConsumesEachOnceAndWorksOneHour]' passed (0.016 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testParticipantValidationOwnershipExpiryAndArchivedClients]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testParticipantValidationOwnershipExpiryAndArchivedClients]' passed (0.016 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testRefundAndCreditLimitsPreserveImmutableOriginals]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testRefundAndCreditLimitsPreserveImmutableOriginals]' passed (0.021 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testSingleSessionChargeIsIdempotentAndCompletedSessionFrozen]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testSingleSessionChargeIsIdempotentAndCompletedSessionFrozen]' passed (0.014 seconds).
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testTenUsesAndEleventhCompletionRejectAtomicallyForWholePair]' started.
+Test Case '-[PaolaCoreTests.BusinessRepositoryTests testTenUsesAndEleventhCompletionRejectAtomicallyForWholePair]' passed (0.143 seconds).
+Test Suite 'BusinessRepositoryTests' passed at 2026-09-09 14:09:37.348.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.318 (0.319) seconds
+Test Suite 'ServiceTariffsTests' started at 2026-09-09 14:09:37.348.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testInjectedSaveFailureNeverMergesPartialCatalogChangesAndRetrySucceeds]' started.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testInjectedSaveFailureNeverMergesPartialCatalogChangesAndRetrySucceeds]' passed (0.015 seconds).
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testInvalidNamesDuplicateIDsNegativePricesAndForeignRateIDsAreAtomic]' started.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testInvalidNamesDuplicateIDsNegativePricesAndForeignRateIDsAreAtomic]' passed (0.028 seconds).
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testLegacyEmptyTariffsEditKeepsExistingAndNewlyAddedNamedRates]' started.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testLegacyEmptyTariffsEditKeepsExistingAndNewlyAddedNamedRates]' passed (0.021 seconds).
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testLegacyFallbackAndDeterministicOrderingFilterOtherServices]' started.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testLegacyFallbackAndDeterministicOrderingFilterOtherServices]' passed (0.000 seconds).
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testLegacySaveCreatesAndUpdatesStableStandardRateWithExactIntegerPrices]' started.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testLegacySaveCreatesAndUpdatesStableStandardRateWithExactIntegerPrices]' passed (0.009 seconds).
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testMultipleRatesAddRemoveReorderAndUpdatePersistWithoutChangingBookedPrices]' started.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testMultipleRatesAddRemoveReorderAndUpdatePersistWithoutChangingBookedPrices]' passed (0.037 seconds).
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testRealReadOnlyFailureLeavesServiceRatesAndDiskUnchanged]' started.
+Test Case '-[PaolaCoreTests.ServiceTariffsTests testRealReadOnlyFailureLeavesServiceRatesAndDiskUnchanged]' passed (0.018 seconds).
+Test Suite 'ServiceTariffsTests' passed at 2026-09-09 14:09:37.476.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.128 (0.128) seconds
+Test Suite 'StoreFactoryTests' started at 2026-09-09 14:09:37.476.
+Test Case '-[PaolaCoreTests.StoreFactoryTests testCorruptStoreThrowsAndIsNotReplaced]' started.
+CoreData: error: addPersistentStoreWithType:configuration:URL:options:error: returned error NSCocoaErrorDomain (259)
+CoreData: error: userInfo:
+CoreData: error: 	NSFilePath : /Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-AFD2C4F1-D8F0-4D86-A639-63BAC43BDB72/Clienti-v1.store
+CoreData: error: 	NSSQLiteErrorDomain : 26
+CoreData: error: storeType: SQLite
+CoreData: error: configuration: PaolaGestionale
+CoreData: error: URL: file:///Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-AFD2C4F1-D8F0-4D86-A639-63BAC43BDB72/Clienti-v1.store
+CoreData: annotation: options:
+CoreData: annotation: 	NSMigratePersistentStoresAutomaticallyOption : 1
+CoreData: annotation: 	NSPersistentStoreStagedMigrationManagerOptionKey : <SwiftData.DefaultMigrationManager: 0x75f1149a0>
+CoreData: annotation: 	NSInferMappingModelAutomaticallyOption : 1
+CoreData: annotation: 	NSPersistentStoreRemoteChangeNotificationOptionKey : 1
+CoreData: annotation: 	NSPersistentHistoryTrackingKey : 1
+CoreData: error: <NSPersistentStoreCoordinator: 0x75e8b5780>: Attempting recovery from error encountered during addPersistentStore: 0x75f3f2520 Error Domain=NSCocoaErrorDomain Code=259 "Impossibile aprire il file “Clienti-v1.store” perché non è nel formato corretto." UserInfo={NSFilePath=/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-AFD2C4F1-D8F0-4D86-A639-63BAC43BDB72/Clienti-v1.store, NSSQLiteErrorDomain=26}
+CoreData: error: Store failed to load.  <NSPersistentStoreDescription: 0x75f3f2460> (type: SQLite, url: file:///Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-AFD2C4F1-D8F0-4D86-A639-63BAC43BDB72/Clienti-v1.store) with error = Error Domain=NSCocoaErrorDomain Code=259 "Impossibile aprire il file “Clienti-v1.store” perché non è nel formato corretto." UserInfo={NSFilePath=/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-AFD2C4F1-D8F0-4D86-A639-63BAC43BDB72/Clienti-v1.store, NSSQLiteErrorDomain=26} with userInfo {
+    NSFilePath = "/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-AFD2C4F1-D8F0-4D86-A639-63BAC43BDB72/Clienti-v1.store";
+    NSSQLiteErrorDomain = 26;
+}
+Test Case '-[PaolaCoreTests.StoreFactoryTests testCorruptStoreThrowsAndIsNotReplaced]' passed (0.005 seconds).
+Test Case '-[PaolaCoreTests.StoreFactoryTests testDiskPersistenceAcrossReopenWithMigrationPlan]' started.
+Test Case '-[PaolaCoreTests.StoreFactoryTests testDiskPersistenceAcrossReopenWithMigrationPlan]' passed (0.017 seconds).
+Test Case '-[PaolaCoreTests.StoreFactoryTests testInvalidDiskPathThrowsWithoutMemoryFallbackOrOverwritingFiles]' started.
+Test Case '-[PaolaCoreTests.StoreFactoryTests testInvalidDiskPathThrowsWithoutMemoryFallbackOrOverwritingFiles]' passed (0.001 seconds).
+Test Case '-[PaolaCoreTests.StoreFactoryTests testMemoryStoreIgnoresDiskURLAndDoesNotCreateItsDirectory]' started.
+Test Case '-[PaolaCoreTests.StoreFactoryTests testMemoryStoreIgnoresDiskURLAndDoesNotCreateItsDirectory]' passed (0.007 seconds).
+Test Case '-[PaolaCoreTests.StoreFactoryTests testPersistenceFailureRollsBackEditsArchiveAndInsert]' started.
+Test Case '-[PaolaCoreTests.StoreFactoryTests testPersistenceFailureRollsBackEditsArchiveAndInsert]' passed (0.013 seconds).
+Test Case '-[PaolaCoreTests.StoreFactoryTests testSchemaAttributesHaveDefaultsAndNoUniqueConstraintsOrRelationships]' started.
+Test Case '-[PaolaCoreTests.StoreFactoryTests testSchemaAttributesHaveDefaultsAndNoUniqueConstraintsOrRelationships]' passed (0.001 seconds).
+Test Case '-[PaolaCoreTests.StoreFactoryTests testVersionedSchemaOpensLocallyWithoutSeedDataOrAutosave]' started.
+Test Case '-[PaolaCoreTests.StoreFactoryTests testVersionedSchemaOpensLocallyWithoutSeedDataOrAutosave]' passed (0.003 seconds).
+Test Suite 'StoreFactoryTests' passed at 2026-09-09 14:09:37.523.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.046 (0.047) seconds
+Test Suite 'PaolaGestionalePackageTests.xctest' passed at 2026-09-09 14:09:37.523.
+	 Executed 38 tests, with 0 failures (0 unexpected) in 1.082 (1.085) seconds
+Test Suite 'Selected tests' passed at 2026-09-09 14:09:37.523.
+	 Executed 38 tests, with 0 failures (0 unexpected) in 1.082 (1.088) seconds
+SwiftData.DefaultStore save failed with error: Error Domain=NSCocoaErrorDomain Code=513 "Non è stato possibile salvare il file perché non hai i permessi." UserInfo={NSPersistentStoreOptions={
+    NSInferMappingModelAutomaticallyOption = 1;
+    NSMigratePersistentStoresAutomaticallyOption = 1;
+    NSPersistentHistoryTrackingKey = 1;
+    NSPersistentStoreRemoteChangeNotificationOptionKey = 1;
+    NSReadOnlyPersistentStoreOption = 1;
+}, reason=Unable to write to file opened Read Only., storeURL=/Users/pirrima001/coding/personal/paola_gestionale/.business-store-2CCDE396-0AED-45AD-9941-BEA1996055E4/business.store}
+SwiftData.DefaultStore save failed with error: Error Domain=NSCocoaErrorDomain Code=513 "Non è stato possibile salvare il file perché non hai i permessi." UserInfo={NSPersistentStoreOptions={
+    NSInferMappingModelAutomaticallyOption = 1;
+    NSMigratePersistentStoresAutomaticallyOption = 1;
+    NSPersistentHistoryTrackingKey = 1;
+    NSPersistentStoreRemoteChangeNotificationOptionKey = 1;
+    NSPersistentStoreStagedMigrationManagerOptionKey = "<SwiftData.DefaultMigrationManager: 0x75f114b60>";
+    NSReadOnlyPersistentStoreOption = 1;
+}, reason=Unable to write to file opened Read Only., storeURL=/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-782A06A6-C5BF-48A5-974E-7E46A94EDE3F/readonly.store}
+SwiftData.DefaultStore save failed with error: Error Domain=NSCocoaErrorDomain Code=513 "Non è stato possibile salvare il file perché non hai i permessi." UserInfo={NSPersistentStoreOptions={
+    NSInferMappingModelAutomaticallyOption = 1;
+    NSMigratePersistentStoresAutomaticallyOption = 1;
+    NSPersistentHistoryTrackingKey = 1;
+    NSPersistentStoreRemoteChangeNotificationOptionKey = 1;
+    NSPersistentStoreStagedMigrationManagerOptionKey = "<SwiftData.DefaultMigrationManager: 0x75f114b60>";
+    NSReadOnlyPersistentStoreOption = 1;
+}, reason=Unable to write to file opened Read Only., storeURL=/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-782A06A6-C5BF-48A5-974E-7E46A94EDE3F/readonly.store}
+SwiftData.DefaultStore save failed with error: Error Domain=NSCocoaErrorDomain Code=513 "Non è stato possibile salvare il file perché non hai i permessi." UserInfo={NSPersistentStoreOptions={
+    NSInferMappingModelAutomaticallyOption = 1;
+    NSMigratePersistentStoresAutomaticallyOption = 1;
+    NSPersistentHistoryTrackingKey = 1;
+    NSPersistentStoreRemoteChangeNotificationOptionKey = 1;
+    NSPersistentStoreStagedMigrationManagerOptionKey = "<SwiftData.DefaultMigrationManager: 0x75f1149a0>";
+    NSReadOnlyPersistentStoreOption = 1;
+}, reason=Unable to write to file opened Read Only., storeURL=/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-693ABD4B-7DEF-475D-87F5-97C87451C456/Clienti-v1.store}
+SwiftData.DefaultStore save failed with error: Error Domain=NSCocoaErrorDomain Code=513 "Non è stato possibile salvare il file perché non hai i permessi." UserInfo={NSPersistentStoreOptions={
+    NSInferMappingModelAutomaticallyOption = 1;
+    NSMigratePersistentStoresAutomaticallyOption = 1;
+    NSPersistentHistoryTrackingKey = 1;
+    NSPersistentStoreRemoteChangeNotificationOptionKey = 1;
+    NSPersistentStoreStagedMigrationManagerOptionKey = "<SwiftData.DefaultMigrationManager: 0x75f1149a0>";
+    NSReadOnlyPersistentStoreOption = 1;
+}, reason=Unable to write to file opened Read Only., storeURL=/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-693ABD4B-7DEF-475D-87F5-97C87451C456/Clienti-v1.store}
+SwiftData.DefaultStore save failed with error: Error Domain=NSCocoaErrorDomain Code=513 "Non è stato possibile salvare il file perché non hai i permessi." UserInfo={NSPersistentStoreOptions={
+    NSInferMappingModelAutomaticallyOption = 1;
+    NSMigratePersistentStoresAutomaticallyOption = 1;
+    NSPersistentHistoryTrackingKey = 1;
+    NSPersistentStoreRemoteChangeNotificationOptionKey = 1;
+    NSPersistentStoreStagedMigrationManagerOptionKey = "<SwiftData.DefaultMigrationManager: 0x75f1149a0>";
+    NSReadOnlyPersistentStoreOption = 1;
+}, reason=Unable to write to file opened Read Only., storeURL=/Users/pirrima001/coding/personal/paola_gestionale/.paola-core-tests-693ABD4B-7DEF-475D-87F5-97C87451C456/Clienti-v1.store}
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
