@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Icona Paola Gestionale: manubrio (fitness) sovrapposto a una griglia calendario
+  (agenda/gestione). Palette teal, coerente con il colore accent dell'app.
+  Sorgente vettoriale: rigenerare i PNG/.icns con scripts/generate-icon.sh.
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2FB6A8"/>
+      <stop offset="1" stop-color="#178F86"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E4EFEC"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sfondo con angoli arrotondati (macOS applica anche la propria maschera) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#bg)"/>
+
+  <!-- Griglia calendario: pagina con testata e celle -->
+  <g transform="translate(224 236)">
+    <!-- corpo del calendario -->
+    <rect x="0" y="0" width="576" height="552" rx="56" ry="56"
+          fill="#FFFFFF" opacity="0.16"/>
+    <rect x="0" y="0" width="576" height="128" rx="56" ry="56" fill="#FFFFFF" opacity="0.28"/>
+    <rect x="0" y="72" width="576" height="56" fill="#FFFFFF" opacity="0.28"/>
+    <!-- anelli/rilegatura -->
+    <rect x="132" y="-40" width="34" height="96" rx="17" fill="#FFFFFF" opacity="0.85"/>
+    <rect x="410" y="-40" width="34" height="96" rx="17" fill="#FFFFFF" opacity="0.85"/>
+    <!-- linee della griglia -->
+    <g stroke="#FFFFFF" stroke-width="10" opacity="0.30" stroke-linecap="round">
+      <line x1="64"  y1="236" x2="512" y2="236"/>
+      <line x1="64"  y1="344" x2="512" y2="344"/>
+      <line x1="64"  y1="452" x2="512" y2="452"/>
+      <line x1="192" y1="180" x2="192" y2="500"/>
+      <line x1="320" y1="180" x2="320" y2="500"/>
+      <line x1="448" y1="180" x2="448" y2="500"/>
+    </g>
+  </g>
+
+  <!-- Manubrio stilizzato sovrapposto -->
+  <g transform="translate(512 560) rotate(-30)">
+    <!-- barra centrale -->
+    <rect x="-232" y="-26" width="464" height="52" rx="26" fill="url(#metal)"/>
+    <!-- dischi interni -->
+    <rect x="-236" y="-84" width="60" height="168" rx="26" fill="url(#metal)"/>
+    <rect x="176"  y="-84" width="60" height="168" rx="26" fill="url(#metal)"/>
+    <!-- dischi esterni -->
+    <rect x="-312" y="-120" width="70" height="240" rx="30" fill="url(#metal)"/>
+    <rect x="242"  y="-120" width="70" height="240" rx="30" fill="url(#metal)"/>
+    <!-- ghiere terminali -->
+    <rect x="-352" y="-70" width="44" height="140" rx="22" fill="url(#metal)"/>
+    <rect x="308"  y="-70" width="44" height="140" rx="22" fill="url(#metal)"/>
+  </g>
+</svg>

@@ -43,6 +43,13 @@ APP="${PAOLA_APP_OUTPUT:-$ROOT/build/Paola Gestionale.app}"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 install -m 755 "$BIN_DIR/PaolaGestionale" "$APP/Contents/MacOS/PaolaGestionale"
 cp "$ROOT/App/Info.plist" "$APP/Contents/Info.plist"
+# Icona dell'app: copia l'.icns nel bundle e collegalo via CFBundleIconFile.
+# Rigenerabile da App/AppIcon.svg con scripts/generate-icon.sh.
+if [[ -f "$ROOT/App/AppIcon.icns" ]]; then
+    cp "$ROOT/App/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+    plutil -replace CFBundleIconFile -string AppIcon "$APP/Contents/Info.plist"
+    plutil -replace CFBundleIconName -string AppIcon "$APP/Contents/Info.plist"
+fi
 # La versione base nel plist è major.minor; la patch è iniettata per rendere
 # incrementali le release (patch = numero di build in CI, 0 in locale).
 BASE_VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$ROOT/App/Info.plist")"

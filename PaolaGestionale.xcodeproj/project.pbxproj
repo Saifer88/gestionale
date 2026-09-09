@@ -20,6 +20,9 @@
 		C10000000000000000000001 /* StorageCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* StorageCoordinator.swift */; };
 		C10000000000000000000002 /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* BackupView.swift */; };
 		C10000000000000000000003 /* ReminderSchedulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000003 /* ReminderSchedulerView.swift */; };
+		D10000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* Assets.xcassets */; };
+		D10000000000000000000002 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* AppUpdater.swift */; };
+		D10000000000000000000003 /* AppUpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* AppUpdateView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +53,9 @@
 		C20000000000000000000001 /* StorageCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageCoordinator.swift; sourceTree = "<group>"; };
 		C20000000000000000000002 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		C20000000000000000000003 /* ReminderSchedulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderSchedulerView.swift; sourceTree = "<group>"; };
+		D20000000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D20000000000000000000002 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
+		D20000000000000000000003 /* AppUpdateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -94,6 +100,8 @@
 				C20000000000000000000001 /* StorageCoordinator.swift */,
 				C20000000000000000000002 /* BackupView.swift */,
 				C20000000000000000000003 /* ReminderSchedulerView.swift */,
+				D20000000000000000000002 /* AppUpdater.swift */,
+				D20000000000000000000003 /* AppUpdateView.swift */,
 				C40000000000000000000001 /* BusinessViews */,
 				C40000000000000000000002 /* Protection */,
 			);
@@ -106,6 +114,7 @@
 			children = (
 				A2000000000000000000000A /* Info.plist */,
 				A2000000000000000000000B /* PaolaGestionale.entitlements */,
+				D20000000000000000000001 /* Assets.xcassets */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -225,6 +234,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D10000000000000000000001 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,6 +256,8 @@
 				C10000000000000000000001 /* StorageCoordinator.swift in Sources */,
 				C10000000000000000000002 /* BackupView.swift in Sources */,
 				C10000000000000000000003 /* ReminderSchedulerView.swift in Sources */,
+				D10000000000000000000002 /* AppUpdater.swift in Sources */,
+				D10000000000000000000003 /* AppUpdateView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -298,6 +310,7 @@
 		A70000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = "$(PAOLA_IOS_ENTITLEMENTS)";
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "$(PAOLA_MAC_ENTITLEMENTS)";
 				CODE_SIGN_STYLE = Automatic;
@@ -323,6 +336,7 @@
 		A70000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = "$(PAOLA_IOS_ENTITLEMENTS)";
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "$(PAOLA_MAC_ENTITLEMENTS)";
 				CODE_SIGN_STYLE = Automatic;
