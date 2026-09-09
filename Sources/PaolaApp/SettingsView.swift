@@ -58,7 +58,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             } header: { Text("Notifiche") }
             Section("Applicazione") {
-                LabeledContent("Versione", value: "0.4.0")
+                LabeledContent("Versione", value: "0.5.0")
                 LabeledContent("Utilizzo", value: "Un personal trainer, clienti fitness")
                 Text("Nessuna telemetria. Documenti non fiscali. Anamnesi e analisi fisica sono campi riservati: registra solo i dati necessari e legittimamente trattabili. Usa il blocco dell'app e conserva backup cifrati.")
                     .font(.caption).foregroundStyle(.secondary)

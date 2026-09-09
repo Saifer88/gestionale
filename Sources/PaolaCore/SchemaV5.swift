@@ -1,10 +1,15 @@
 import Foundation
 import SwiftData
 
-public enum PaolaSchemaV1: VersionedSchema {
-    public static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
-
-    public static var models: [any PersistentModel.Type] { [Client.self] }
+public enum PaolaSchemaV5: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(5, 0, 0) }
+    public static var models: [any PersistentModel.Type] {
+        [
+            Client.self, TrainingService.self, ServiceRate.self, TrainingSession.self,
+            SessionParticipant.self, LessonPackage.self, PackageUse.self, LedgerEntry.self,
+            Unavailability.self, ClientAppointmentPreference.self
+        ]
+    }
 
     @Model
     public final class Client {
@@ -14,6 +19,10 @@ public enum PaolaSchemaV1: VersionedSchema {
         public var phone: String = ""
         public var email: String = ""
         public var notes: String = ""
+        public var anamnesis: String = ""
+        public var physicalAnalysis: String = ""
+        public var preferredServiceID: UUID?
+        public var preferredRateID: UUID?
         public var joinedOn: Date = Date()
         public var createdAt: Date = Date()
         public var updatedAt: Date = Date()
@@ -26,10 +35,14 @@ public enum PaolaSchemaV1: VersionedSchema {
             phone: String = "",
             email: String = "",
             notes: String = "",
+            anamnesis: String = "",
+            physicalAnalysis: String = "",
             joinedOn: Date = Date(),
             createdAt: Date = Date(),
             updatedAt: Date? = nil,
-            isArchived: Bool = false
+            isArchived: Bool = false,
+            preferredServiceID: UUID? = nil,
+            preferredRateID: UUID? = nil
         ) {
             self.id = id
             self.firstName = firstName
@@ -37,30 +50,18 @@ public enum PaolaSchemaV1: VersionedSchema {
             self.phone = phone
             self.email = email
             self.notes = notes
+            self.anamnesis = anamnesis
+            self.physicalAnalysis = physicalAnalysis
             self.joinedOn = Calendar.current.startOfDay(for: joinedOn)
             self.createdAt = createdAt
             self.updatedAt = updatedAt ?? createdAt
             self.isArchived = isArchived
+            self.preferredServiceID = preferredServiceID
+            self.preferredRateID = preferredRateID
         }
 
         public var fullName: String {
             TextNormalization.spaces("\(firstName) \(lastName)")
         }
-    }
-}
-
-public typealias Client = PaolaSchemaV5.Client
-
-public enum PaolaSchemaMigrationPlan: SchemaMigrationPlan {
-    public static var schemas: [any VersionedSchema.Type] {
-        [PaolaSchemaV1.self, PaolaSchemaV2.self, PaolaSchemaV3.self, PaolaSchemaV4.self, PaolaSchemaV5.self]
-    }
-    public static var stages: [MigrationStage] {
-        [
-            .lightweight(fromVersion: PaolaSchemaV1.self, toVersion: PaolaSchemaV2.self),
-            .lightweight(fromVersion: PaolaSchemaV2.self, toVersion: PaolaSchemaV3.self),
-            .lightweight(fromVersion: PaolaSchemaV3.self, toVersion: PaolaSchemaV4.self),
-            .lightweight(fromVersion: PaolaSchemaV4.self, toVersion: PaolaSchemaV5.self)
-        ]
     }
 }

@@ -137,7 +137,7 @@ struct SessionEditor: View {
             } header: {
                 Text("Prima scegli il cliente")
             } footer: {
-                Text("Per un nuovo appuntamento vengono proposti servizio, orario, tariffa e pacchetto usati l'ultima volta da questo cliente.")
+                Text("Il servizio e la tariffa preferiti della scheda cliente hanno precedenza. In assenza di preferenze si riprendono le ultime scelte; orario e pacchetto restano quelli usati di recente.")
             }
             if clientID == nil {
                 Text("Seleziona un cliente per continuare.")
@@ -273,7 +273,9 @@ struct SessionEditor: View {
         do {
             let selected = try AppointmentSelection.propose(
                 clientID: clientID, services: services, rates: rates, sessions: sessions,
-                participants: participants, blocks: blocks, packages: packages, uses: uses, preferences: preferences
+                participants: participants, blocks: blocks, packages: packages, uses: uses, preferences: preferences,
+                preferredServiceID: clients.first(where: { $0.id == clientID })?.preferredServiceID,
+                preferredRateID: clients.first(where: { $0.id == clientID })?.preferredRateID
             )
             draft.serviceID = selected.serviceID
             draft.serviceName = services.first { $0.id == selected.serviceID }?.name ?? ""

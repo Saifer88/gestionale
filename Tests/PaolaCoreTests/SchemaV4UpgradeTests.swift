@@ -18,7 +18,7 @@ final class SchemaV4UpgradeTests: XCTestCase {
                 let old = try ModelContainer(for: schema, configurations: [config])
                 let context = old.mainContext
                 context.autosaveEnabled = false
-                let client = Client(id: clientID, firstName: "Prova", lastName: "Storico",
+                let client = PaolaSchemaV3.Client(id: clientID, firstName: "Prova", lastName: "Storico",
                                     anamnesis: "Anamnesi conservata", physicalAnalysis: "Analisi conservata")
                 let service = TrainingService(name: "Servizio storico", priceCents: 5000)
                 let rate = ServiceRate(serviceID: service.id, name: "Tariffa storica", priceCents: 5000)
@@ -84,7 +84,7 @@ final class SchemaV4UpgradeTests: XCTestCase {
             session.participants[0].tariffID = service.tariffs[1].id
             _ = try repository.saveSession(session)
             let snapshot = try ArchiveSnapshot.capture(context: context)
-            XCTAssertEqual(snapshot.version, 4)
+            XCTAssertEqual(snapshot.version, 5)
             XCTAssertEqual(snapshot.business.preferences.count, 1)
             let data = try snapshot.encoded()
             let decoded = try ArchiveSnapshot.decode(data)

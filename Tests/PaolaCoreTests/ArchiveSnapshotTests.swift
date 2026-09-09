@@ -52,7 +52,7 @@ final class ArchiveSnapshotTests: XCTestCase {
             _ = try repository.saveBlock(block)
 
             let captured = try ArchiveSnapshot.capture(context: context)
-            XCTAssertEqual(captured.version, 4)
+            XCTAssertEqual(captured.version, 5)
             XCTAssertEqual(captured.business.rates.count, 2)
             let cipher = try BackupCipher.encrypt(captured.encoded(), password: "Password-di-prova-123")
             let decoded = try ArchiveSnapshot.decode(BackupCipher.decrypt(cipher, password: "Password-di-prova-123"))

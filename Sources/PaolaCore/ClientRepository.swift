@@ -48,6 +48,7 @@ public final class ClientRepository {
         } else {
             savedClient = Client()
         }
+        try validatePreferences(normalized, original: client == nil ? nil : savedClient, in: writer)
         if !allowDuplicate, try hasDuplicate(normalized, excluding: client?.persistentModelID, in: writer) {
             throw ClientValidationError.possibleDuplicate
         }
@@ -64,6 +65,8 @@ public final class ClientRepository {
         savedClient.notes = normalized.notes
         savedClient.anamnesis = normalized.anamnesis
         savedClient.physicalAnalysis = normalized.physicalAnalysis
+        savedClient.preferredServiceID = normalized.preferredServiceID
+        savedClient.preferredRateID = normalized.preferredRateID
         savedClient.joinedOn = normalized.joinedOn
 
         return try commit(savedClient, in: writer)
@@ -103,6 +106,24 @@ public final class ClientRepository {
     private func checkAvailable(_ client: Client) throws {
         guard client.modelContext === context, !client.isDeleted else {
             throw ClientValidationError.staleRecord
+        }
+    }
+
+    private func validatePreferences(_ draft: ClientDraft, original: Client?, in writer: ModelContext) throws {
+        guard let serviceID = draft.preferredServiceID else { return }
+        // Keep obsolete preferences when editing unrelated client fields; the appointment form reports them.
+        if let original, original.preferredServiceID == serviceID, original.preferredRateID == draft.preferredRateID {
+            return
+        }
+        let services = try writer.fetch(FetchDescriptor<TrainingService>())
+        guard let service = services.first(where: { $0.id == serviceID && $0.isActive }) else {
+            throw ClientValidationError.invalidPreference
+        }
+        if let rateID = draft.preferredRateID {
+            let rates = try writer.fetch(FetchDescriptor<ServiceRate>())
+            guard ServiceTariffs.options(for: service, rates: rates).contains(where: { $0.id == rateID }) else {
+                throw ClientValidationError.invalidPreference
+            }
         }
     }
 

@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 public struct ArchiveSnapshot: Codable {
-    public var version: Int = 4
+    public var version: Int = 5
     public var createdAt: Date = Date()
     public var clients: [ClientRecord]
     public var business: BusinessArchive
@@ -17,6 +17,8 @@ public struct ArchiveSnapshot: Codable {
         public var notes: String
         public var anamnesis: String
         public var physicalAnalysis: String
+        public var preferredServiceID: UUID?
+        public var preferredRateID: UUID?
         public var joinedOn: Date
         public var createdAt: Date
         public var updatedAt: Date
@@ -31,6 +33,8 @@ public struct ArchiveSnapshot: Codable {
             notes = client.notes
             anamnesis = client.anamnesis
             physicalAnalysis = client.physicalAnalysis
+            preferredServiceID = client.preferredServiceID
+            preferredRateID = client.preferredRateID
             joinedOn = client.joinedOn
             createdAt = client.createdAt
             updatedAt = client.updatedAt
@@ -40,6 +44,7 @@ public struct ArchiveSnapshot: Codable {
         private enum CodingKeys: String, CodingKey {
             case id, firstName, lastName, phone, email, notes, anamnesis, physicalAnalysis
             case joinedOn, createdAt, updatedAt, isArchived
+            case preferredServiceID, preferredRateID
         }
 
         public init(from decoder: Decoder) throws {
@@ -52,6 +57,8 @@ public struct ArchiveSnapshot: Codable {
             notes = try values.decode(String.self, forKey: .notes)
             anamnesis = try values.decodeIfPresent(String.self, forKey: .anamnesis) ?? ""
             physicalAnalysis = try values.decodeIfPresent(String.self, forKey: .physicalAnalysis) ?? ""
+            preferredServiceID = try values.decodeIfPresent(UUID.self, forKey: .preferredServiceID)
+            preferredRateID = try values.decodeIfPresent(UUID.self, forKey: .preferredRateID)
             joinedOn = try values.decode(Date.self, forKey: .joinedOn)
             createdAt = try values.decode(Date.self, forKey: .createdAt)
             updatedAt = try values.decode(Date.self, forKey: .updatedAt)
@@ -62,7 +69,8 @@ public struct ArchiveSnapshot: Codable {
             let client = Client(id: id, firstName: firstName, lastName: lastName, phone: phone,
                                 email: email, notes: notes, anamnesis: anamnesis,
                                 physicalAnalysis: physicalAnalysis, joinedOn: joinedOn,
-                                createdAt: createdAt, updatedAt: updatedAt, isArchived: isArchived)
+                                createdAt: createdAt, updatedAt: updatedAt, isArchived: isArchived,
+                                preferredServiceID: preferredServiceID, preferredRateID: preferredRateID)
             client.joinedOn = joinedOn
             return client
         }
@@ -82,7 +90,7 @@ public struct ArchiveSnapshot: Codable {
     }
 
     public func validate() throws {
-        guard (2...4).contains(version), createdAt.timeIntervalSinceReferenceDate.isFinite,
+        guard (2...5).contains(version), createdAt.timeIntervalSinceReferenceDate.isFinite,
               clients.count <= 100_000,
               Set(clients.map(\.id)).count == clients.count else { throw ArchiveError.invalidArchive }
         for client in clients {
@@ -91,6 +99,15 @@ public struct ArchiveSnapshot: Codable {
                   [client.joinedOn, client.createdAt, client.updatedAt].allSatisfy({
                       $0.timeIntervalSinceReferenceDate.isFinite
                   }) else { throw ArchiveError.invalidArchive }
+            guard client.preferredRateID == nil || client.preferredServiceID != nil else {
+                throw ArchiveError.invalidArchive
+            }
+            if let serviceID = client.preferredServiceID {
+                guard business.services.contains(where: { $0.id == serviceID }) else { throw ArchiveError.invalidArchive }
+                if let rateID = client.preferredRateID, let rate = business.rates.first(where: { $0.id == rateID }) {
+                    guard rate.serviceID == serviceID else { throw ArchiveError.invalidArchive }
+                }
+            }
         }
         try business.validate(clientIDs: Set(clients.map(\.id)))
     }

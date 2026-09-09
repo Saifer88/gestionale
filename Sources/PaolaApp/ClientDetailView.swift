@@ -5,6 +5,8 @@ import SwiftUI
 struct ClientDetailView: View {
     @Environment(\.modelContext) private var context
     let client: Client
+    @Query private var services: [TrainingService]
+    @Query private var rates: [ServiceRate]
     @State private var showingEditor = false
     @State private var confirmingArchive = false
     @State private var formError: FormError?
@@ -33,6 +35,26 @@ struct ClientDetailView: View {
                 LabeledContent("Email", value: client.email.isEmpty ? "Non inserita" : client.email)
             }
             .textSelection(.enabled)
+
+            Section("Preferenze appuntamenti") {
+                if let error = _services.fetchError ?? _rates.fetchError {
+                    Label(error.localizedDescription, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                } else if let serviceID = client.preferredServiceID {
+                    let service = services.first { $0.id == serviceID }
+                    LabeledContent("Servizio preferito", value: service.map {
+                        $0.name + ($0.isActive ? "" : " · disattivato")
+                    } ?? "Non disponibile")
+                    let choices = service.map { ServiceTariffs.options(for: $0, rates: rates) } ?? []
+                    let preferred = choices.first { $0.id == client.preferredRateID }
+                    LabeledContent("Tariffa preferita", value: client.preferredRateID == nil
+                        ? "Predefinita del servizio"
+                        : preferred.map { "\($0.name) · \(Money.format($0.priceCents))" } ?? "Non disponibile")
+                } else {
+                    Text("Nessuna preferenza: si riprendono le ultime scelte disponibili.")
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Section("Rapporto professionale") {
                 LabeledContent("Cliente dal") {

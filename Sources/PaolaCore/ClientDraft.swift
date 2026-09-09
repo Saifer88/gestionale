@@ -6,6 +6,7 @@ public enum ClientValidationError: LocalizedError, Equatable {
     case possibleDuplicate
     case staleRecord
     case invalidDate
+    case invalidPreference
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ public enum ClientValidationError: LocalizedError, Equatable {
             return "Questo cliente e stato modificato o non e piu disponibile. Riapri la scheda prima di salvare."
         case .invalidDate:
             return "Inserisci una data di inizio rapporto valida."
+        case .invalidPreference:
+            return "Seleziona un servizio attivo e una sua tariffa valida, oppure rimuovi le preferenze."
         }
     }
 }
@@ -31,6 +34,8 @@ public struct ClientDraft {
     public var notes: String = ""
     public var anamnesis: String = ""
     public var physicalAnalysis: String = ""
+    public var preferredServiceID: UUID?
+    public var preferredRateID: UUID?
     public var joinedOn: Date = Calendar.current.startOfDay(for: Date())
 
     private var originalID: UUID?
@@ -46,6 +51,8 @@ public struct ClientDraft {
         notes = client.notes
         anamnesis = client.anamnesis
         physicalAnalysis = client.physicalAnalysis
+        preferredServiceID = client.preferredServiceID
+        preferredRateID = client.preferredRateID
         joinedOn = client.joinedOn
         originalID = client.id
         originalUpdatedAt = client.updatedAt
@@ -69,6 +76,9 @@ public struct ClientDraft {
         }
         guard joinedOn.timeIntervalSinceReferenceDate.isFinite else {
             throw ClientValidationError.invalidDate
+        }
+        guard preferredRateID == nil || preferredServiceID != nil else {
+            throw ClientValidationError.invalidPreference
         }
         result.joinedOn = Calendar.current.startOfDay(for: joinedOn)
         return result

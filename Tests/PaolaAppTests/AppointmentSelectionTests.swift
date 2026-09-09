@@ -122,4 +122,63 @@ final class AppointmentSelectionTests: XCTestCase {
         )
         XCTAssertFalse(quick.contains(selection.startDate))
     }
+
+    func testConfiguredServiceAndRateOverrideHistoryWithoutLosingUsualTimeOrPackage() throws {
+        let client = UUID()
+        let preferred = TrainingService(name: "Preferito", durationMinutes: 45, priceCents: 5000)
+        let preferredRate = ServiceRate(serviceID: preferred.id, name: "Ridotta", priceCents: 3500)
+        let other = TrainingService(name: "Occasionale", priceCents: 7000)
+        let package = LessonPackage(clientID: client, purchasedOn: date(8), priceCents: 40000)
+        let previous = ClientAppointmentPreference(clientID: client, serviceID: other.id,
+            preferredHour: 16, priceCents: 7000, packageID: package.id, durationMinutes: 90)
+        let value = try AppointmentSelection.propose(
+            clientID: client, now: date(), services: [other, preferred], rates: [preferredRate],
+            sessions: [], participants: [], blocks: [], packages: [package], uses: [], preferences: [previous],
+            preferredServiceID: preferred.id, preferredRateID: preferredRate.id, calendar: calendar
+        )
+        XCTAssertEqual(value.serviceID, preferred.id)
+        XCTAssertEqual(value.rateID, preferredRate.id)
+        XCTAssertEqual(value.priceCents, 3500)
+        XCTAssertEqual(value.durationMinutes, 45)
+        XCTAssertEqual(value.startDate, date(9, 16))
+        XCTAssertEqual(value.packageID, package.id)
+    }
+
+    func testConfiguredPreferenceWorksBeforeFirstAppointmentAndUsesCurrentRatePrice() throws {
+        let service = TrainingService(name: "Preferito", priceCents: 5000)
+        let rate = ServiceRate(serviceID: service.id, name: "Ridotta", priceCents: 3500)
+        let value = try AppointmentSelection.propose(
+            clientID: UUID(), now: date(), services: [service], rates: [rate], sessions: [], participants: [],
+            blocks: [], packages: [], uses: [], preferences: [],
+            preferredServiceID: service.id, preferredRateID: rate.id, calendar: calendar
+        )
+        XCTAssertEqual(value.serviceID, service.id)
+        XCTAssertEqual(value.rateID, rate.id)
+        XCTAssertEqual(value.priceCents, 3500)
+        XCTAssertNil(value.packageID)
+    }
+
+    func testUnavailableConfiguredPreferenceFallsBackWithNoticeAndCanBeRemoved() throws {
+        let client = UUID()
+        let inactive = TrainingService(name: "Vecchio", priceCents: 5000, isActive: false)
+        let current = TrainingService(name: "Attivo", priceCents: 3500)
+        let previous = ClientAppointmentPreference(clientID: client, serviceID: current.id,
+            preferredHour: 14, priceCents: 3500)
+        let value = try AppointmentSelection.propose(
+            clientID: client, now: date(), services: [inactive, current], rates: [], sessions: [], participants: [],
+            blocks: [], packages: [], uses: [], preferences: [previous],
+            preferredServiceID: inactive.id, preferredRateID: UUID(), calendar: calendar
+        )
+        XCTAssertEqual(value.serviceID, current.id)
+        XCTAssertEqual(value.priceCents, 3500)
+        XCTAssertFalse(value.notices.isEmpty)
+        let missingRate = try AppointmentSelection.propose(
+            clientID: client, now: date(), services: [current], rates: [], sessions: [], participants: [],
+            blocks: [], packages: [], uses: [], preferences: [previous],
+            preferredServiceID: current.id, preferredRateID: UUID(), calendar: calendar
+        )
+        XCTAssertEqual(missingRate.priceCents, 3500)
+        XCTAssertEqual(missingRate.rateID, current.id)
+        XCTAssertFalse(missingRate.notices.isEmpty)
+    }
 }

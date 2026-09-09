@@ -1,7 +1,7 @@
 # Gestionale personal trainer - Documento iniziale
 
 Data: 8 settembre 2026
-Stato: versione 0.4.0 in collaudo; attivazione iCloud ancora da configurare.
+Stato: versione 0.5.0 compilata e collaudata; pipeline release macOS predisposta, iCloud ancora da configurare.
 Nome provvisorio del progetto: Paola Gestionale.
 
 ## 1. Obiettivo
@@ -64,6 +64,8 @@ collaudo offline su entrambi i dispositivi.
 - Archiviazione senza perdere lo storico.
 - Segnalazione di possibili duplicati, senza fusioni automatiche.
 - Campi facoltativi "Anamnesi" e "Analisi fisica", separati dalle note organizzative.
+- Servizio e tariffa preferiti facoltativi, impostabili in creazione e modifica
+  cliente. La tariffa deve appartenere al servizio scelto.
 - I testi riservati sono conservati nel backup cifrato, ma esclusi da ricerca
   generale, estratti economici e promemoria.
 
@@ -81,6 +83,12 @@ Nella prima versione non e' prevista una cartella clinica.
 - Per ogni cliente vengono riproposti servizio, orario, tariffa e pacchetto
   dell'ultimo appuntamento salvato con successo. Annullare una bozza o fallire
   un salvataggio non cambia le preferenze.
+- Se la scheda cliente contiene servizio e tariffa preferiti, questi hanno
+  precedenza sullo storico anche prima del primo appuntamento. Usare una
+  scelta diversa in una singola lezione non modifica i preferiti del cliente.
+- "Nessuno" ripristina la scelta basata sullo storico. Con il solo servizio
+  preferito si usa la sua tariffa predefinita. Prezzi aggiornati e preferenze
+  non piu' disponibili seguono il listino corrente con avvisi espliciti.
 - Per i clienti provenienti dalle vecchie versioni, senza preferenze esplicite,
   si utilizza l'ultimo appuntamento creato, escludendo annullamenti e assenze.
 - Se il servizio e' disattivato, il pacchetto esaurito/scaduto o la tariffa
@@ -485,7 +493,7 @@ Prima di passare ai dati reali, verificare il ripristino di un backup e,
 se si desidera la sincronizzazione, configurare la firma iCloud e provare
 trasferimenti, conflitti e cambio account sui due dispositivi fisici.
 
-## 15. Implementazione - versione 0.4.0
+## 15. Implementazione - versione 0.5.0
 
 ### Prototipo locale compilato
 
@@ -501,6 +509,8 @@ trasferimenti, conflitti e cambio account sui due dispositivi fisici.
 - Swift Package senza dipendenze esterne e progetto Xcode multipiattaforma.
 - Agenda con selezione giorno, settimana e mese; nuove sedute individuali.
 - Selezione iniziale del cliente e ultime preferenze persistenti.
+- Preferiti espliciti per servizio e tariffa nella scheda cliente, con precedenza
+  sullo storico degli appuntamenti.
 - Settimana in colonne e selezione rapida di giorni/orari liberi a minuti 00.
 - Listino con piu' tariffe per servizio e prezzi storici per partecipante.
 - Anamnesi e analisi fisica facoltative, incluse nel backup cifrato.
@@ -528,7 +538,7 @@ trasferimenti, conflitti e cambio account sui due dispositivi fisici.
   automaticamente all'attivazione del servizio.
 - Le evoluzioni della sezione 5 rimangono fuori dal MVP approvato: abbonamenti,
   liste d'attesa, importazioni, gruppi oltre due persone, integrazioni esterne
-  e fatturazione elettronica non sono incluse nella versione 0.4.0.
+  e fatturazione elettronica non sono incluse nella versione 0.5.0.
 
 Il modello clienti evita vincoli di unicita' incompatibili con la futura
 sincronizzazione CloudKit. Questo non equivale a una sincronizzazione gia'
@@ -564,8 +574,9 @@ iCloud senza configurazione della firma e delle capability.
 
 ### Migrazione e recupero
 
-Lo schema 4 aggiunge le ultime preferenze di appuntamento per cliente.
-Conserva i campi riservati e le tariffe dello schema 3, le anagrafiche e tutti
+Lo schema 5 aggiunge servizio e tariffa preferiti del cliente, separati dalle
+ultime scelte di appuntamento dello schema 4. Conserva i campi riservati e le
+tariffe dello schema 3, le anagrafiche e tutti
 i movimenti degli schemi precedenti, senza ricreare incassi. I servizi
 precedenti propongono una tariffa "Standard" con il prezzo gia' salvato.
 I vecchi backup senza i nuovi campi restano importabili: i testi mancanti
@@ -612,7 +623,37 @@ Correzione verificata l'8 settembre 2026:
   viene distinto dal fallimento della scrittura: l'app avvisa che i dati
   sono salvati e impedisce di reinviare la stessa scheda.
 
-Collaudo della versione 0.3.0, 9 settembre 2026:
+Collaudo della versione 0.5.0, 9 settembre 2026:
+
+- 157 test SwiftPM superati, inclusi preferiti espliciti, validazione delle
+  tariffe, priorita' sullo storico, migrazione V4-V5 e backup retrocompatibili.
+- Collaudo UI iPhone superato: preferenze impostate in creazione cliente,
+  mantenute dopo riavvio e un appuntamento occasionale diverso, quindi
+  rimosse per tornare alle ultime scelte.
+- Build Release universale Intel/Apple Silicon riuscita; verificati firma
+  ad hoc, metadati, integrita' ZIP e checksum SHA-256.
+- Workflow verificato localmente per trigger, permessi, pin delle azioni e
+  pubblicazione simulata. Nessuna esecuzione remota dichiarata: richiede
+  il push del workflow su GitHub.
+
+Collaudo precedente della versione 0.4.0, 9 settembre 2026:
+
+- 146 test SwiftPM superati: incassi automatici atomici, completamento
+  idempotente, utilizzi pacchetto senza secondo incasso, rimborsi, preferenze
+  persistenti per cliente e riquadri anno/mese/settimana.
+- Verificate migrazione V3-V4 senza incassi retroattivi, conservazione dei
+  campi riservati, backup con preferenze e ripristino dei backup precedenti.
+- 4 collaudi UI iPhone superati nello stesso run: anagrafica, protezione,
+  nuovo flusso cliente/preferenze/incassi e orari/tariffe/campi riservati.
+- Nel flusso operativo il pacchetto da 400 EUR genera un solo incasso;
+  completare una sua lezione lascia 400 EUR; una lezione singola completata
+  da 50 EUR porta a 450 EUR nei riquadri e nei report.
+- Verificati il pulsante `+` diretto, l'assenza delle nuove lezioni in coppia,
+  la scelta obbligatoria del cliente e le preferenze conservate dopo riavvio.
+- Build Xcode Mac/iPhone e firma ad hoc del bundle 0.4.0 verificate.
+  App Mac avviata con archivio temporaneo separato da quello dell'utente.
+
+Collaudo precedente della versione 0.3.0, 9 settembre 2026:
 
 - 119 test SwiftPM superati: include migrazioni V1/V2 verso V3, nuovi campi
   cliente, tariffe multiple, prezzi storici, vecchi backup e disponibilita'.
@@ -667,19 +708,20 @@ xcodebuild -version
 
 ### Mac: prima prova locale
 
-La nuova build viene preparata in `build/releases/0.4.0/Paola Gestionale.app`.
+La nuova build universale Release e' disponibile in
+`build/releases/0.5.0/Paola Gestionale.app`, insieme allo ZIP e al checksum.
 Chiudere prima la vecchia app: non usare contemporaneamente due versioni sullo
 stesso archivio. Aprire la nuova app attiva la migrazione automatica dello schema.
 La vecchia applicazione aperta non e' stata chiusa o sostituita durante lo sviluppo.
 
 ```bash
-open "build/releases/0.4.0/Paola Gestionale.app"
+open "build/releases/0.5.0/Paola Gestionale.app"
 ```
 
 Per ricompilare separatamente la versione completa:
 
 ```bash
-PAOLA_APP_OUTPUT="$PWD/build/releases/0.4.0/Paola Gestionale.app" \
+PAOLA_APP_OUTPUT="$PWD/build/releases/0.5.0/Paola Gestionale.app" \
   bash scripts/build-macos.sh
 ```
 
@@ -711,6 +753,9 @@ controlli e percorso con cliente iniziale, preferenze, pacchetto, completamento
 lezione e incassi automatici.
 Un quarto flusso verifica colonne settimanali, scelte rapide, tariffe multiple
 e salvataggio dei campi riservati.
+Un quinto flusso verifica servizio e tariffa preferiti impostati creando un
+cliente, conservati dopo riavvio e dopo un appuntamento occasionale, e rimossi
+per tornare alla scelta basata sullo storico.
 
 Ogni test UI apre un archivio isolato tramite un identificativo casuale.
 Il codice di selezione degli archivi di collaudo e' disponibile solo in Debug.
@@ -779,3 +824,69 @@ Il collegamento a iCloud apre un archivio dedicato, non carica automaticamente
 le copie locali preesistenti. Prima di questa transizione esportare un backup
 e definire quale copia debba essere la sorgente iniziale; non importare due volte
 gli stessi dati su dispositivi diversi.
+
+## 17. Release macOS automatica su GitHub
+
+Il workflow `.github/workflows/release-macos.yml` parte a ogni push sul branch
+`main`, senza filtri sui percorsi. E' disponibile anche l'avvio manuale da
+Actions sullo stesso branch. Il repository configurato e' `Saifer88/gestionale`.
+
+### Sequenza della pipeline
+
+1. Checkout del commit con credenziali Git non persistenti.
+2. Sul runner `macos-15`, verifica Xcode e Swift, poi esecuzione di `swift test`.
+3. Compilazione ottimizzata Release per Intel (`x86_64`) e Apple Silicon (`arm64`).
+4. Creazione e verifica del bundle universale, della firma ad hoc e dello ZIP.
+5. Calcolo SHA-256 e caricamento degli asset verificati come artifact di build.
+6. Solo dopo tutti i passaggi riusciti, pubblicazione della GitHub Release con
+   ZIP e `SHA256SUMS.txt`.
+
+La versione applicativa viene letta da `App/Info.plist`; il numero di build
+proviene dal numero del run GitHub. Il tag ha formato
+`vVERSIONE-build.NUMERO`, per esempio `v0.5.0-build.123`. Ogni push produce una
+release distinta se test e build passano. Un errore ferma la pubblicazione.
+Il riavvio dello stesso run riutilizza il tag e aggiorna gli asset solo se
+la release esistente corrisponde allo stesso commit.
+
+Le esecuzioni di push differenti non si cancellano a vicenda. Il job di build
+ha solo `contents: read`; soltanto il job di pubblicazione ha `contents: write`.
+Si utilizza il `GITHUB_TOKEN` automatico, senza PAT o credenziali Apple.
+Le azioni ufficiali sono bloccate a commit specifici.
+
+### Attivazione e limiti
+
+Il workflow deve essere committato e inviato a `main`, e GitHub Actions deve
+essere consentito nelle impostazioni del repository/organizzazione. Le modifiche
+di questa attivita' non sono state committate o inviate automaticamente:
+la prima esecuzione remota andra' verificata dopo il push.
+
+Questa release e' firmata **ad hoc**, non con un certificato Apple Developer ID,
+e **non e' notarizzata**. Gatekeeper puo' impedirne l'apertura. La pipeline non
+disabilita le protezioni di macOS e non configura acquisti o account Apple.
+CloudKit resta disattivato nel pacchetto automatico; l'identificativo del bundle
+rimane `local.paola.gestionale.preview`, come nella build locale.
+
+Prima di aprire una nuova versione, chiudere quella precedente e conservare
+un backup cifrato. Non usare una versione precedente sul database gia' migrato.
+
+### Riprodurre la release sul Mac
+
+Con Xcode completo selezionato:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+PAOLA_RELEASE_OUTPUT="$PWD/build/releases/0.5.0" \
+  bash scripts/package-macos-release.sh
+```
+
+Lo script produce l'app, lo ZIP universale, `SHA256SUMS.txt` e le note della
+release. Per la verifica del file scaricato, dalla stessa cartella dello ZIP:
+
+```bash
+shasum -a 256 --check SHA256SUMS.txt
+```
+
+`scripts/build-macos.sh` mantiene il comportamento Debug predefinito e supporta
+`PAOLA_BUILD_CONFIGURATION=release`, `PAOLA_UNIVERSAL=1`, `PAOLA_BUILD_NUMBER`,
+`PAOLA_BUILD_PATH` e `PAOLA_APP_OUTPUT` per build separate. Lo script di packaging
+imposta automaticamente Release e universale.

@@ -375,6 +375,75 @@ final class ClientWorkflowUITests: XCTestCase {
         return next
     }
 
+    @MainActor
+    func testClientPreferredServiceAndRateOverrideLastAppointment() throws {
+        let app = testApplication()
+        app.launchArguments = ["-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
+        app.launch()
+        app.tabBars.buttons["Impostazioni"].tap()
+        app.buttons["Servizi e listino"].tap()
+        for (name, price) in [("Alternativo", "70"), ("Preferito", "50")] {
+            tap(app.buttons["services.new"], in: app)
+            replace(app.textFields["service.name"], with: name)
+            replace(app.textFields["service.price"], with: price)
+            if name == "Preferito" {
+                tap(app.buttons["service.addRate"], in: app)
+                replace(app.textFields["service.rateName.1"], with: "Ridotta")
+                replace(app.textFields["service.ratePrice.1"], with: "35")
+            }
+            app.buttons["service.save"].tap()
+            XCTAssertTrue(app.buttons["services.new"].waitForExistence(timeout: 5))
+        }
+        app.tabBars.buttons["Clienti"].tap()
+        tap(app.buttons["Nuovo cliente"].firstMatch, in: app)
+        replace(app.textFields["client.firstName"], with: "Cliente")
+        replace(app.textFields["client.lastName"], with: "Preferenze")
+        choose("client.preferredService", label: "Preferito", in: app)
+        choosePrefix("client.preferredRate", prefix: "Ridotta ·", in: app)
+        app.buttons["client.save"].tap()
+        app.terminate()
+        app.launch()
+
+        app.tabBars.buttons["Agenda"].tap()
+        app.buttons["agenda.add"].tap()
+        choose("session.client1", label: "Cliente Preferenze", in: app)
+        XCTAssertTrue(app.buttons["session.service"].label.contains("Preferito"))
+        reveal(app.buttons["session.tariff1"], in: app)
+        XCTAssertTrue(app.buttons["session.tariff1"].label.contains("Ridotta"))
+        reveal(app.textFields["session.price1"], in: app)
+        XCTAssertEqual(app.textFields["session.price1"].value as? String, "35,00")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Servizio e tariffa preferiti preselezionati"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        for _ in 0..<5 where !app.buttons["session.service"].exists { app.swipeDown() }
+        choosePrefix("session.service", prefix: "Alternativo ·", in: app)
+        app.buttons["session.save"].tap()
+        XCTAssertTrue(app.buttons["agenda.add"].waitForExistence(timeout: 5))
+
+        app.buttons["agenda.add"].tap()
+        choose("session.client1", label: "Cliente Preferenze", in: app)
+        XCTAssertTrue(app.buttons["session.service"].label.contains("Preferito"))
+        reveal(app.buttons["session.tariff1"], in: app)
+        XCTAssertTrue(app.buttons["session.tariff1"].label.contains("Ridotta"))
+        app.buttons["Annulla"].tap()
+
+        app.tabBars.buttons["Clienti"].tap()
+        tap(app.staticTexts["Cliente Preferenze"].firstMatch, in: app)
+        app.buttons["Modifica"].tap()
+        choose("client.preferredService", label: "Nessuno · usa le ultime scelte", in: app)
+        XCTAssertFalse(app.buttons["client.preferredRate"].exists)
+        app.buttons["client.save"].tap()
+        XCTAssertTrue(app.buttons["Modifica"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Agenda"].tap()
+        app.buttons["agenda.add"].tap()
+        choose("session.client1", label: "Cliente Preferenze", in: app)
+        XCTAssertTrue(app.buttons["session.service"].label.contains("Alternativo"))
+        reveal(app.textFields["session.price1"], in: app)
+        XCTAssertEqual(app.textFields["session.price1"].value as? String, "70,00")
+        app.buttons["Annulla"].tap()
+    }
+
     private var italianCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = Locale(identifier: "it_IT")

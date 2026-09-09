@@ -16,6 +16,7 @@ struct AppointmentSelection {
         sessions: [TrainingSession], participants: [SessionParticipant], blocks: [Unavailability],
         packages: [LessonPackage], uses: [PackageUse],
         preferences: [ClientAppointmentPreference],
+        preferredServiceID: UUID? = nil, preferredRateID: UUID? = nil,
         calendar: Calendar = SchedulingSuggestions.calendar
     ) throws -> AppointmentSelection {
         let previous = AppointmentPreferences.lastUsed(
@@ -24,13 +25,26 @@ struct AppointmentSelection {
         let activeServices = services.filter(\.isActive).sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
-        let service = activeServices.first { $0.id == previous?.serviceID } ?? activeServices.first
+        let configuredService = activeServices.first { $0.id == preferredServiceID }
+        let service = configuredService ?? activeServices.first { $0.id == previous?.serviceID } ?? activeServices.first
         let sameService = previous != nil && previous?.serviceID == service?.id
         let options = service.map { ServiceTariffs.options(for: $0, rates: rates) } ?? []
         var selectedRate = options.first
         var price = selectedRate?.priceCents ?? 0
         var notices: [String] = []
-        if let previous {
+        if preferredServiceID != nil && configuredService == nil {
+            notices.append("Il servizio preferito non è attivo: vengono proposte le ultime scelte disponibili.")
+        }
+        if configuredService != nil {
+            if let preferredRateID {
+                if let rate = options.first(where: { $0.id == preferredRateID }) {
+                    selectedRate = rate
+                    price = rate.priceCents
+                } else {
+                    notices.append("La tariffa preferita non è più disponibile: proposta la tariffa predefinita del servizio.")
+                }
+            }
+        } else if let previous {
             if sameService {
                 if let rate = options.first(where: { $0.id == previous.rateID }) {
                     selectedRate = rate

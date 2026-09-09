@@ -5,6 +5,8 @@ import SwiftUI
 struct ClientEditor: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \TrainingService.name) private var services: [TrainingService]
+    @Query private var rates: [ServiceRate]
     private let client: Client?
     @State private var draft: ClientDraft
     @State private var formError: FormError?
@@ -31,6 +33,8 @@ struct ClientEditor: View {
                 } footer: {
                     Text("Nome e cognome sono obbligatori.")
                 }
+
+                preferenceSection
 
                 Section("Recapiti facoltativi") {
                     TextField("Telefono", text: $draft.phone)
@@ -95,7 +99,7 @@ struct ClientEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Salva") { save() }
-                        .disabled(savedButRefreshFailed)
+                        .disabled(savedButRefreshFailed || _services.fetchError != nil || _rates.fetchError != nil)
                         .keyboardShortcut(.defaultAction)
                         .accessibilityIdentifier("client.save")
                 }
@@ -124,6 +128,61 @@ struct ClientEditor: View {
             }
         } message: {
             Text(formError?.message ?? "")
+        }
+    }
+
+    private var preferredService: TrainingService? {
+        services.first { $0.id == draft.preferredServiceID }
+    }
+
+    private var availableRates: [ServiceRateDraft] {
+        preferredService.map { ServiceTariffs.options(for: $0, rates: rates) } ?? []
+    }
+
+    private var preferenceSection: some View {
+        Section {
+            if let error = _services.fetchError ?? _rates.fetchError {
+                Label(error.localizedDescription, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            } else {
+                Picker("Servizio preferito", selection: Binding(
+                    get: { draft.preferredServiceID },
+                    set: { id in
+                        draft.preferredServiceID = id
+                        draft.preferredRateID = nil
+                    }
+                )) {
+                    Text("Nessuno · usa le ultime scelte").tag(nil as UUID?)
+                    ForEach(services.filter { $0.isActive || $0.id == draft.preferredServiceID }) { service in
+                        Text(service.name + (service.isActive ? "" : " · disattivato"))
+                            .tag(Optional(service.id))
+                    }
+                    if let id = draft.preferredServiceID, preferredService == nil {
+                        Text("Servizio non disponibile").tag(Optional(id))
+                    }
+                }
+                .accessibilityIdentifier("client.preferredService")
+                if draft.preferredServiceID != nil {
+                    Picker("Tariffa preferita", selection: $draft.preferredRateID) {
+                        Text("Predefinita del servizio").tag(nil as UUID?)
+                        ForEach(availableRates) { rate in
+                            Text("\(rate.name) · \(Money.format(rate.priceCents))").tag(Optional(rate.id))
+                        }
+                        if let id = draft.preferredRateID, !availableRates.contains(where: { $0.id == id }) {
+                            Text("Tariffa non disponibile").tag(Optional(id))
+                        }
+                    }
+                    .accessibilityIdentifier("client.preferredRate")
+                }
+                if services.allSatisfy({ !$0.isActive }) {
+                    Text("Puoi creare servizi e tariffe nelle Impostazioni e impostare la preferenza anche in seguito.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Preferenze appuntamenti")
+        } footer: {
+            Text("Facoltative. Queste scelte hanno precedenza sullo storico nei nuovi appuntamenti. Una tariffa diversa usata in una singola lezione non modifica le preferenze del cliente.")
         }
     }
 
