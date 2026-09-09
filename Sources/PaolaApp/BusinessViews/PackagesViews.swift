@@ -37,11 +37,11 @@ struct PackagesView: View {
                         }
                         Toggle("Solo pacchetti con lezioni disponibili", isOn: $onlyAvailable)
                     } footer: {
-                        Text("Pacchetti da 10 lezioni, personali e senza rinnovo automatico. Il saldo economico è separato dal numero di lezioni residue.")
+                        Text("Pacchetti con numero di lezioni configurabile, personali e senza rinnovo automatico. Il saldo economico è separato dal numero di lezioni residue.")
                     }
                     if visiblePackages.isEmpty {
                         ContentUnavailableView("Nessun pacchetto", systemImage: "square.stack.3d.up",
-                                               description: Text("Assegna un pacchetto da 10 lezioni oppure modifica il filtro per consultare lo storico."))
+                                               description: Text("Assegna un pacchetto oppure modifica il filtro per consultare lo storico."))
                     }
                     ForEach(visiblePackages) { package in
                         NavigationLink {
@@ -57,7 +57,7 @@ struct PackagesView: View {
         .accessibilityIdentifier("packages.screen")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { creating = true } label: { Label("Assegna 10 lezioni", systemImage: "plus") }
+                Button { creating = true } label: { Label("Assegna pacchetto", systemImage: "plus") }
                     .accessibilityIdentifier("packages.new")
             }
         }
@@ -98,6 +98,7 @@ struct PackageEditor: View {
     @State private var selectedClientID: UUID?
     @State private var purchasedOn = Date()
     @State private var price = ""
+    @State private var capacity = 10
     @State private var hasExpiry = false
     @State private var expiry = Date()
     @State private var notes = ""
@@ -123,7 +124,17 @@ struct PackageEditor: View {
                                 Text("Aggiungi o riattiva un cliente nell'anagrafica per assegnare un pacchetto.")
                                     .font(.caption).foregroundStyle(.orange)
                             }
-                            LabeledContent("Lezioni incluse", value: "10")
+                            Stepper("Lezioni incluse: \(capacity)", value: $capacity, in: 1...1000)
+                                .accessibilityIdentifier("package.capacity")
+                            HStack {
+                                Text("Selezione rapida")
+                                Spacer()
+                                ForEach([5, 10], id: \.self) { count in
+                                    Button("\(count)") { capacity = count }
+                                        .buttonStyle(.bordered)
+                                        .accessibilityIdentifier("package.capacity.\(count)")
+                                }
+                            }
                             MoneyField(title: "Prezzo totale del pacchetto (€)", text: $price)
                                 .accessibilityIdentifier("package.price")
                             DatePicker("Data di acquisto", selection: $purchasedOn, displayedComponents: .date)
@@ -145,7 +156,7 @@ struct PackageEditor: View {
                     .formStyle(.grouped)
                 }
             }
-            .navigationTitle("Assegna 10 lezioni")
+            .navigationTitle("Assegna pacchetto")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Annulla") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -178,6 +189,9 @@ struct PackageEditor: View {
     private func validateForConfirmation() {
         do {
             guard selectedClientID != nil else { throw BusinessInputError(message: "Seleziona un cliente attivo.") }
+            guard (1...1000).contains(capacity) else {
+                throw BusinessInputError(message: "Il numero di lezioni deve essere compreso tra 1 e 1000.")
+            }
             _ = try Money.parse(price)
             confirmingIncome = true
         } catch { operation.capture(error) }
@@ -189,6 +203,7 @@ struct PackageEditor: View {
             var draft = PackageDraft()
             draft.clientID = selectedClientID
             draft.priceCents = try Money.parse(price)
+            draft.capacity = capacity
             draft.purchasedOn = Calendar.current.startOfDay(for: purchasedOn)
             draft.expiresOn = hasExpiry ? Calendar.current.startOfDay(for: expiry) : nil
             draft.notes = notes
@@ -216,7 +231,7 @@ struct PackageDetailView: View {
                 ArchiveReadErrorView(error: error)
             } else {
                 Form {
-                    Section("Pacchetto da 10 lezioni") {
+                    Section("Pacchetto da \(package.capacity) lezioni") {
                         PackageSummaryRow(package: package, uses: uses)
                         ProgressView(value: Double(package.capacity - BusinessReports.remaining(package: package, uses: uses)),
                                      total: Double(max(1, package.capacity)))

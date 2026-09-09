@@ -79,15 +79,13 @@ public final class BusinessRepository {
             let session: TrainingSession
             if let id = draft.id {
                 session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
-                guard previousParticipants.filter({ $0.sessionID == id }).count == 1 else {
-                    throw BusinessError.legacyPairSessionLocked
-                }
                 guard session.status != .completed else { throw BusinessError.completedSessionLocked }
             } else {
                 session = TrainingSession()
             }
-            guard draft.participants.count == 1 else {
-                throw BusinessError.invalidInput("Selezionare un solo cliente per la lezione.")
+            guard !draft.participants.isEmpty,
+                  Set(draft.participants.map(\.clientID)).count == draft.participants.count else {
+                throw BusinessError.invalidInput("Selezionare almeno un cliente, senza partecipanti duplicati.")
             }
             if !allowOverlap, session.status == .planned {
                 try checkOverlap(start: draft.startDate, end: endDate, excludingSession: session.id, in: writer)
@@ -159,7 +157,7 @@ public final class BusinessRepository {
             if status == .completed {
                 try BusinessRules.date(completionDate)
                 let participants = try writer.fetch(FetchDescriptor<SessionParticipant>()).filter { $0.sessionID == id }
-                guard (1...2).contains(participants.count),
+                guard !participants.isEmpty,
                       Set(participants.map(\.clientID)).count == participants.count else {
                     throw BusinessError.inconsistentData("Partecipanti della lezione non validi.")
                 }
@@ -194,6 +192,7 @@ public final class BusinessRepository {
         try transact { writer in
             let client = try client(draft.clientID, in: writer, requireActive: true)
             try BusinessRules.date(draft.purchasedOn); try BusinessRules.amount(draft.priceCents)
+            try BusinessRules.packageCapacity(draft.capacity)
             if let expiry = draft.expiresOn {
                 try BusinessRules.date(expiry)
                 guard Calendar.current.startOfDay(for: expiry) >= Calendar.current.startOfDay(for: draft.purchasedOn) else {
@@ -201,15 +200,17 @@ public final class BusinessRepository {
                 }
             }
             let package = LessonPackage(clientID: client.id, clientName: client.fullName,
-                purchasedOn: draft.purchasedOn, priceCents: draft.priceCents, expiresOn: draft.expiresOn,
+                purchasedOn: draft.purchasedOn, priceCents: draft.priceCents, capacity: draft.capacity,
+                expiresOn: draft.expiresOn,
                 notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines))
             writer.insert(package)
             writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
-                kind: .charge, amountCents: draft.priceCents, notes: "Pacchetto 10 lezioni",
+                kind: .charge, amountCents: draft.priceCents, notes: "Pacchetto \(draft.capacity) lezioni",
                 sourceKey: BusinessRules.packageSource(package.id)))
             if draft.priceCents > 0 {
                 writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
-                    kind: .payment, amountCents: draft.priceCents, method: .other, notes: "Pacchetto 10 lezioni",
+                    kind: .payment, amountCents: draft.priceCents, method: .other,
+                    notes: "Pacchetto \(draft.capacity) lezioni",
                     sourceKey: BusinessRules.packageIncomeSource(package.id)))
             }
             return package.id

@@ -49,9 +49,11 @@ final class ClientWorkflowUITests: XCTestCase {
         email.typeText(emailAddress)
         app.buttons["client.save"].tap()
 
+        app.tabBars.buttons["Clienti"].tap()
         XCTAssertTrue(app.staticTexts[fullName].firstMatch.waitForExistence(timeout: 5))
         app.terminate()
         app.launch()
+        app.tabBars.buttons["Clienti"].tap()
         let persistedClient = app.staticTexts[fullName].firstMatch
         XCTAssertTrue(persistedClient.waitForExistence(timeout: 10))
         persistedClient.tap()
@@ -160,13 +162,15 @@ final class ClientWorkflowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["services.new"].waitForExistence(timeout: 5))
         app.navigationBars.buttons["Impostazioni"].tap()
 
-        app.buttons["Pacchetti da 10"].tap()
+        app.buttons["Pacchetti"].tap()
         tap(app.buttons["packages.new"], in: app)
         choose("package.client", label: firstName, in: app)
+        app.buttons["package.capacity.5"].tap()
         replace(app.textFields["package.price"], with: "400")
         app.buttons["package.save"].tap()
         app.buttons["package.confirmIncome"].firstMatch.tap()
         XCTAssertTrue(app.buttons["packages.new"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["5/5 residue"].waitForExistence(timeout: 5))
         assertIncomeCards("400,00", in: app)
 
         app.tabBars.buttons["Agenda"].tap()
@@ -257,6 +261,7 @@ final class ClientWorkflowUITests: XCTestCase {
         app.buttons["client.save"].tap()
         app.terminate()
         app.launch()
+        app.tabBars.buttons["Clienti"].tap()
         let client = app.staticTexts["Cliente Nuove funzioni"].firstMatch
         reveal(client, in: app)
         client.tap()
@@ -306,6 +311,7 @@ final class ClientWorkflowUITests: XCTestCase {
         let days = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session.quickDay."))
         XCTAssertFalse(days.allElementsBoundByIndex.contains { $0.label.hasPrefix("Sabato") || $0.label.hasPrefix("Domenica") })
         let packageChoice = app.buttons["session.package1"]
+        for _ in 0..<6 where !packageChoice.exists { app.swipeDown() }
         reveal(packageChoice, in: app)
         XCTAssertTrue(packageChoice.label.contains("Pacchetto in uso"))
         XCTAssertTrue(packageChoice.label.contains("No"))
@@ -339,15 +345,17 @@ final class ClientWorkflowUITests: XCTestCase {
     @MainActor
     private func assertIncomeCards(_ amount: String, in app: XCUIApplication) {
         app.tabBars.buttons["Panoramica"].tap()
-        let annual = app.descendants(matching: .any).matching(identifier: "overview.income.year").firstMatch
-        for _ in 0..<8 where !annual.exists || annual.frame.minY < 80 { app.swipeDown() }
-        for period in ["year", "month", "week"] {
+        let row = app.scrollViews["overview.row.income"]
+        for _ in 0..<8 where !row.exists || row.frame.minY < 80 { app.swipeDown() }
+        row.swipeRight()
+        for period in ["week", "month", "year"] {
             let card = app.descendants(matching: .any).matching(NSPredicate(
                 format: "identifier == %@ AND label CONTAINS %@", "overview.income.\(period)", amount
             )).firstMatch
-            reveal(card, in: app)
+            for _ in 0..<4 where !card.isHittable { row.swipeLeft() }
             XCTAssertTrue(card.exists)
         }
+        row.swipeRight()
     }
 
     @MainActor
@@ -442,6 +450,108 @@ final class ClientWorkflowUITests: XCTestCase {
         reveal(app.textFields["session.price1"], in: app)
         XCTAssertEqual(app.textFields["session.price1"].value as? String, "70,00")
         app.buttons["Annulla"].tap()
+    }
+
+    @MainActor
+    func testFourRowOverviewGroupForecastAndCancelledCalendar() throws {
+        let app = testApplication()
+        app.launchArguments = ["-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
+        app.launch()
+        for name in ["Alfa", "Beta", "Gamma"] {
+            tap(app.buttons["overview.newClient"], in: app)
+            replace(app.textFields["client.firstName"], with: name)
+            replace(app.textFields["client.lastName"], with: "Panoramica")
+            app.buttons["client.save"].tap()
+            XCTAssertTrue(app.buttons["overview.newClient"].waitForExistence(timeout: 5))
+        }
+        app.tabBars.buttons["Impostazioni"].tap()
+        app.buttons["Servizi e listino"].tap()
+        tap(app.buttons["services.new"], in: app)
+        replace(app.textFields["service.name"], with: "Servizio da non mostrare nel calendario")
+        replace(app.textFields["service.price"], with: "50")
+        app.buttons["service.save"].tap()
+        XCTAssertTrue(app.buttons["services.new"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Panoramica"].tap()
+        tap(app.buttons["overview.newPackage"], in: app)
+        XCTAssertTrue(app.buttons["package.save"].waitForExistence(timeout: 5))
+        app.buttons["Annulla"].tap()
+        tap(app.buttons["dashboard.newSession"], in: app)
+        choose("session.client1", label: "Alfa Panoramica", in: app)
+        tap(app.buttons["session.addParticipant"], in: app)
+        choose("session.client2", label: "Beta Panoramica", in: app)
+        tap(app.buttons["session.addParticipant"], in: app)
+        choose("session.client3", label: "Gamma Panoramica", in: app)
+        reveal(app.textFields["session.price3"], in: app)
+        replace(app.textFields["session.price3"], with: "35")
+        app.buttons["session.save"].tap()
+        XCTAssertTrue(app.buttons["dashboard.newSession"].waitForExistence(timeout: 5))
+        for _ in 0..<8 where !app.scrollViews["overview.row.income"].isHittable { app.swipeDown() }
+        let incomeRow = app.scrollViews["overview.row.income"]
+        incomeRow.swipeLeft()
+        let forecast = metric("overview.income.future", contains: "135,00", in: app)
+        XCTAssertTrue(forecast.waitForExistence(timeout: 5))
+        let week = metric("overview.income.week", contains: "0,00", in: app)
+        let month = metric("overview.income.month", contains: "0,00", in: app)
+        let year = metric("overview.income.year", contains: "0,00", in: app)
+        XCTAssertLessThan(week.frame.minX, month.frame.minX)
+        XCTAssertLessThan(month.frame.minX, year.frame.minX)
+        XCTAssertLessThan(year.frame.minX, forecast.frame.minX)
+        XCTAssertEqual(week.frame.minY, forecast.frame.minY, accuracy: 2)
+        XCTAssertTrue(metric("overview.week.clients", contains: "3", in: app).exists)
+        XCTAssertTrue(metric("overview.week.sessions", contains: "1", in: app).exists)
+        let weekRow = app.otherElements["overview.row.week"].firstMatch
+        let todayRow = app.otherElements["overview.row.today"].firstMatch
+        let shortcuts = app.otherElements["overview.row.shortcuts"].firstMatch
+        XCTAssertLessThan(incomeRow.frame.minY, weekRow.frame.minY)
+        XCTAssertLessThan(weekRow.frame.minY, todayRow.frame.minY)
+        XCTAssertLessThan(todayRow.frame.minY, shortcuts.frame.minY)
+        for oldSection in ["Clienti attivi", "Clienti archiviati", "Clienti totali", "Spazio alle persone.",
+                           "La tua anagrafica", "Situazione conti attuale", "Prossimi appuntamenti"] {
+            XCTAssertFalse(app.staticTexts[oldSection].exists)
+        }
+        let overviewScreenshot = XCTAttachment(screenshot: app.screenshot())
+        overviewScreenshot.name = "Panoramica in quattro righe e previsione"
+        overviewScreenshot.lifetime = .keepAlways
+        add(overviewScreenshot)
+
+        app.tabBars.buttons["Agenda"].tap()
+        app.segmentedControls.buttons["Giorno"].tap()
+        let appointment = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "agenda.appointment.")).firstMatch
+        reveal(appointment, in: app)
+        XCTAssertTrue(appointment.label.contains("Alfa Panoramica"))
+        XCTAssertTrue(appointment.label.contains("Beta Panoramica"))
+        XCTAssertTrue(appointment.label.contains("Gamma Panoramica"))
+        XCTAssertTrue(appointment.label.contains("50,00"))
+        XCTAssertTrue(appointment.label.contains("35,00"))
+        XCTAssertFalse(appointment.label.contains("Servizio da non mostrare"))
+        let calendarScreenshot = XCTAttachment(screenshot: app.screenshot())
+        calendarScreenshot.name = "Calendario con orario nomi e prezzi"
+        calendarScreenshot.lifetime = .keepAlways
+        add(calendarScreenshot)
+        appointment.tap()
+        tap(app.buttons["Annulla appuntamento"], in: app)
+        app.buttons["session.confirmStatus"].firstMatch.tap()
+        app.navigationBars.buttons["Agenda"].tap()
+        XCTAssertFalse(appointment.exists)
+        app.tabBars.buttons["Panoramica"].tap()
+        for _ in 0..<6 where !incomeRow.isHittable { app.swipeDown() }
+        incomeRow.swipeLeft()
+        XCTAssertTrue(metric("overview.income.future", contains: "0,00", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(metric("overview.week.clients", contains: "0", in: app).exists)
+        XCTAssertTrue(metric("overview.week.sessions", contains: "0", in: app).exists)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "overview.appointment.")).firstMatch.exists)
+        app.tabBars.buttons["Clienti"].tap()
+        tap(app.staticTexts["Alfa Panoramica"].firstMatch, in: app)
+        tap(app.buttons["Storico appuntamenti"], in: app)
+        XCTAssertTrue(app.staticTexts["Servizio da non mostrare nel calendario"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Annullata"].firstMatch.exists)
+    }
+
+    @MainActor
+    private func metric(_ identifier: String, contains value: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == %@ AND label CONTAINS %@", identifier, value
+        )).firstMatch
     }
 
     private var italianCalendar: Calendar {

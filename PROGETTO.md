@@ -1,7 +1,7 @@
 # Gestionale personal trainer - Documento iniziale
 
 Data: 8 settembre 2026
-Stato: versione 0.5.0 compilata e collaudata; pipeline release macOS predisposta, iCloud ancora da configurare.
+Stato: versione 0.6.0 compilata e collaudata; pipeline release macOS predisposta, iCloud ancora da configurare.
 Nome provvisorio del progetto: Paola Gestionale.
 
 ## 1. Obiettivo
@@ -27,9 +27,9 @@ Le funzionalita' approvate non sono tutte gia' implementate: vedere la sezione 1
 - Stesso account Apple su Mac/iPhone e utilizzo di iCloud approvato.
 - Clienti fitness; anamnesi e analisi fisica come testi riservati facoltativi,
   richiesti il 9 settembre 2026. Nessuna funzione di diagnosi o cartella clinica.
-- Sedute per un solo cliente; lezioni singole e pacchetti da 10.
-- Dal 9 settembre 2026 le nuove sedute in coppia sono eliminate. Lo storico
-  delle versioni precedenti viene conservato senza conversioni distruttive.
+- Appuntamenti con uno o piu' clienti distinti; lezioni singole e pacchetti con numero di lezioni configurabile.
+- La versione 0.6.0 introduce "Aggiungi partecipante": servizio e orario sono
+  condivisi, mentre ciascun cliente ha il proprio prezzo ed eventuale pacchetto.
 - Pacchetti assegnati ai clienti con consumo degli utilizzi per sessione.
 - Statistiche su incassi, ore lavorate, orari piu' scelti e media oraria.
 - Nessuna importazione iniziale; installazione locale senza pubblicazione su store.
@@ -76,10 +76,22 @@ Nella prima versione non e' prevista una cartella clinica.
 
 - Vista giornaliera, settimana con sette colonne da lunedi' a domenica e
   riepilogo mensile. Le colonne sono scorrevoli sui dispositivi piu' stretti.
-- Creazione e modifica di appuntamenti individuali.
+- Creazione e modifica di appuntamenti con uno o piu' partecipanti distinti.
+- Gli appuntamenti annullati sono esclusi dalle viste giorno/settimana/mese
+  e dagli appuntamenti odierni della panoramica, ma rimangono nello storico
+  cliente e nei backup. Non vengono cancellati movimenti o utilizzi.
+- Le schede del calendario mostrano orario, nome cliente e prezzo concordato,
+  senza il nome del servizio. Nei gruppi sono elencati nomi e prezzi individuali.
+  L'uso del pacchetto e le sovrapposizioni restano segnalati.
 - Il pulsante `+` apre direttamente il nuovo appuntamento. La creazione di
   pause e ferie rimane disponibile in Impostazioni, separata dal pulsante `+`.
 - Il cliente e' la prima selezione obbligatoria: gli altri campi appaiono dopo.
+- Il primo cliente determina il servizio/orario proposto. E' possibile aggiungere
+  e rimuovere altri partecipanti prima del completamento, senza un limite fisso
+  e senza inserire lo stesso cliente due volte.
+- Le tariffe degli altri partecipanti appartengono al servizio comune. Si
+  riprende la preferenza del cliente se compatibile, altrimenti il prezzo
+  predefinito del servizio; il pacchetto rimane individuale.
 - Per ogni cliente vengono riproposti servizio, orario, tariffa e pacchetto
   dell'ultimo appuntamento salvato con successo. Annullare una bozza o fallire
   un salvataggio non cambia le preferenze.
@@ -134,9 +146,9 @@ una gestione dedicata di penali e recuperi.
 
 I nomi degli esempi non implicano prestazioni sanitarie o qualifiche professionali.
 
-### 4.3.1 Pacchetti da 10
+### 4.3.1 Pacchetti
 
-- Assegnazione di un pacchetto da 10 utilizzi a un cliente.
+- Assegnazione di un pacchetto con un numero positivo di utilizzi configurabile; 5 e 10 sono disponibili come selezioni rapide e 10 e' il valore iniziale.
 - Prezzo concordato, data di acquisto, utilizzi residui e storico delle sedute.
 - Consumo collegato al completamento della sessione, non alla prenotazione.
 - Nessun doppio consumo se una sessione viene salvata o sincronizzata piu' volte.
@@ -195,13 +207,32 @@ Non sostituiscono fatture, ricevute fiscali o consulenza contabile.
 
 ### 4.6 Schermata iniziale
 
-- Appuntamenti di oggi e prossimi appuntamenti.
-- Riquadri per incassi annuali, mensili e settimanali, con lo stesso stile dei
-  riquadri clienti. Periodi correnti di calendario; settimana da lunedi' a domenica.
-- I riquadri mostrano gli incassi lordi; i rimborsi sono riportati separatamente.
-- Totale ancora da incassare.
-- Accessi rapidi a nuovo cliente e appuntamento.
-- Stato della sincronizzazione ed eventuali errori da risolvere.
+La panoramica contiene soltanto queste quattro righe, nell'ordine:
+
+1. Incassi settimanali, mensili, annuali e futuri previsti.
+2. Utenti prenotati nella settimana in corso e lezioni programmate nella stessa settimana.
+3. Appuntamenti del giorno, ordinati per orario e senza quelli annullati.
+4. Shortcut per nuovo appuntamento, nuovo cliente e nuovo pacchetto.
+
+I quattro riquadri della prima riga sono affiancati e scorrevoli orizzontalmente
+sugli schermi stretti. Gli incassi sono lordi, riferiti ai periodi correnti di
+calendario; i rimborsi restano disponibili nei report.
+
+La previsione e' la somma dei prezzi delle sole lezioni ancora programmate con
+inizio successivo all'istante attuale, anche oltre la settimana in corso.
+I partecipanti coperti da pacchetto sono esclusi, perche' l'utilizzo della
+lezione non genera un ulteriore incasso. Non si tratta di denaro gia' ricevuto
+e il totale non crea alcun movimento.
+
+I due contatori settimanali considerano gli appuntamenti nello stato
+"Programmata", con inizio tra lunedi' e domenica inclusi. Un cliente prenotato
+piu' volte conta una sola volta; un appuntamento di gruppo conta come una
+lezione, ma include tutti i suoi clienti nel conteggio degli utenti.
+
+Schede recenti, conteggi generali dei clienti, slogan, saldi e altre sezioni
+non fanno piu' parte della panoramica. Rimangono accessibili dalle relative
+aree dell'app. Eventuali avvisi globali di integrita' dell'archivio non vengono
+nascosti.
 
 Gli incassi non devono essere presentati come utile: nella prima versione
 non vengono calcolate spese, imposte e contributi.
@@ -224,7 +255,7 @@ Eventuali eccedenze, rimborsi e scadenze richiedono regole concordate.
 
 ### Evoluzioni possibili
 
-- Sedute di gruppo con piu' di due partecipanti e capienza.
+- Gestione di capienze e prenotazioni autonome per eventuali corsi.
 - Ulteriori statistiche su frequenza, assenze e andamento dell'attivita'.
 - Obiettivi e misurazioni, previa valutazione della natura dei dati e della privacy.
 - Allegati e documentazione, con requisiti di protezione e conservazione dedicati.
@@ -493,12 +524,12 @@ Prima di passare ai dati reali, verificare il ripristino di un backup e,
 se si desidera la sincronizzazione, configurare la firma iCloud e provare
 trasferimenti, conflitti e cambio account sui due dispositivi fisici.
 
-## 15. Implementazione - versione 0.5.0
+## 15. Implementazione - versione 0.6.0
 
 ### Prototipo locale compilato
 
 - App SwiftUI nativa con navigazione Mac e interfaccia iPhone condivisa.
-- Panoramica con conteggi reali dei clienti e accesso alle schede recenti.
+- Panoramica nelle quattro righe richieste, con conteggi settimanali e previsione incassi.
 - Inserimento e modifica clienti, recapiti facoltativi e note organizzative.
 - Ricerca per nome, telefono o email; filtri attivi, archiviati e tutti.
 - Archiviazione e riattivazione senza cancellazione dei dati.
@@ -507,7 +538,8 @@ trasferimenti, conflitti e cambio account sui due dispositivi fisici.
 - Salvataggio locale esplicito con SwiftData e schema versionato.
 - Errori di apertura e salvataggio visibili; nessun ripiego su archivi temporanei.
 - Swift Package senza dipendenze esterne e progetto Xcode multipiattaforma.
-- Agenda con selezione giorno, settimana e mese; nuove sedute individuali.
+- Agenda con selezione giorno, settimana e mese; appuntamenti con piu' partecipanti.
+- Annullati esclusi dal calendario e schede con orari, nomi e prezzi.
 - Selezione iniziale del cliente e ultime preferenze persistenti.
 - Preferiti espliciti per servizio e tariffa nella scheda cliente, con precedenza
   sullo storico degli appuntamenti.
@@ -515,9 +547,9 @@ trasferimenti, conflitti e cambio account sui due dispositivi fisici.
 - Listino con piu' tariffe per servizio e prezzi storici per partecipante.
 - Anamnesi e analisi fisica facoltative, incluse nel backup cifrato.
 - Indisponibilita', segnalazione sovrapposizioni e stati delle sedute.
-- Pacchetti da 10 con scadenza facoltativa, acquisto e storico degli utilizzi.
+- Pacchetti con numero di lezioni configurabile, selezioni rapide 5/10, scadenza facoltativa, acquisto e storico degli utilizzi.
 - Incassi automatici, storico pagamenti, rimborsi e storni collegati ai movimenti originali.
-- Riquadri incassi per anno, mese e settimana.
+- Riquadri incassi settimana, mese, anno e futuri previsti.
 - Saldi cliente e allocazioni automatiche dei pagamenti agli addebiti.
 - Statistiche su incassi, tempi lavorati e fasce orarie.
 - Estratti non fiscali con anteprima ed esportazione CSV/PDF.
@@ -537,8 +569,8 @@ trasferimenti, conflitti e cambio account sui due dispositivi fisici.
   cancellazioni o duplicazioni. Gli archivi locali e iCloud non vengono uniti
   automaticamente all'attivazione del servizio.
 - Le evoluzioni della sezione 5 rimangono fuori dal MVP approvato: abbonamenti,
-  liste d'attesa, importazioni, gruppi oltre due persone, integrazioni esterne
-  e fatturazione elettronica non sono incluse nella versione 0.5.0.
+  liste d'attesa, importazioni, integrazioni esterne e fatturazione elettronica
+  non sono incluse nella versione 0.6.0.
 
 Il modello clienti evita vincoli di unicita' incompatibili con la futura
 sincronizzazione CloudKit. Questo non equivale a una sincronizzazione gia'
@@ -560,8 +592,10 @@ iCloud senza configurazione della firma e delle capability.
   non genera altri movimenti. Gli importi zero non creano pagamenti fittizi.
 - Non vengono aggiunti incassi retroattivi ai pacchetti o alle lezioni
   gia' completate nelle versioni precedenti.
-- Gli appuntamenti storici con due partecipanti restano consultabili e possono
-  essere completati/annullati, ma non modificati o convertiti in sedute singole.
+- Gli appuntamenti con piu' partecipanti, inclusi quelli storici, sono modificabili
+  fino al completamento. Il completamento registra tutti gli addebiti, incassi
+  e utilizzi in un'unica transazione: un errore su un partecipante non lascia
+  operazioni parziali sugli altri.
 - I pagamenti sono ripartiti automaticamente sugli addebiti aperti, in ordine
   cronologico. Il residuo non allocato e' un anticipo.
 - I rimborsi fanno riferimento a un incasso; gli storni a un addebito.
@@ -623,7 +657,24 @@ Correzione verificata l'8 settembre 2026:
   viene distinto dal fallimento della scrittura: l'app avvisa che i dati
   sono salvati e impedisce di reinviare la stessa scheda.
 
-Collaudo della versione 0.5.0, 9 settembre 2026:
+Verifiche della versione 0.6.0:
+
+- 165 test SwiftPM superati: previsione solo per lezioni future programmate,
+  esclusione dei pacchetti, clienti unici nella settimana, annullati esclusi
+  dal calendario e corretta gestione dei confini di giorno/settimana.
+- Verificati appuntamenti con tre e quattro partecipanti, prezzi distinti,
+  pacchetti individuali, completamento idempotente, errore di scrittura senza
+  operazioni parziali e ripristino dal backup.
+- Verificati sei flussi UI iPhone: cinque passati nel collaudo integrato e
+  quello relativo agli orari ripetuto con successo dopo l'adattamento dello
+  scorrimento del test al nuovo modulo.
+- Il nuovo collaudo UI verifica le quattro righe e il loro ordine, tre utenti
+  e una lezione, previsione di 135 EUR, calendario con nomi/prezzi senza servizio
+  e annullamento che azzera la previsione ma conserva lo storico.
+- Build Release universale Intel/Apple Silicon verificata, con firma ad hoc,
+  integrita' ZIP e checksum SHA-256.
+
+Collaudo precedente della versione 0.5.0, 9 settembre 2026:
 
 - 157 test SwiftPM superati, inclusi preferiti espliciti, validazione delle
   tariffe, priorita' sullo storico, migrazione V4-V5 e backup retrocompatibili.
@@ -709,19 +760,19 @@ xcodebuild -version
 ### Mac: prima prova locale
 
 La nuova build universale Release e' disponibile in
-`build/releases/0.5.0/Paola Gestionale.app`, insieme allo ZIP e al checksum.
+`build/releases/0.6.0/Paola Gestionale.app`, insieme allo ZIP e al checksum.
 Chiudere prima la vecchia app: non usare contemporaneamente due versioni sullo
 stesso archivio. Aprire la nuova app attiva la migrazione automatica dello schema.
 La vecchia applicazione aperta non e' stata chiusa o sostituita durante lo sviluppo.
 
 ```bash
-open "build/releases/0.5.0/Paola Gestionale.app"
+open "build/releases/0.6.0/Paola Gestionale.app"
 ```
 
 Per ricompilare separatamente la versione completa:
 
 ```bash
-PAOLA_APP_OUTPUT="$PWD/build/releases/0.5.0/Paola Gestionale.app" \
+PAOLA_APP_OUTPUT="$PWD/build/releases/0.6.0/Paola Gestionale.app" \
   bash scripts/build-macos.sh
 ```
 
@@ -756,6 +807,9 @@ e salvataggio dei campi riservati.
 Un quinto flusso verifica servizio e tariffa preferiti impostati creando un
 cliente, conservati dopo riavvio e dopo un appuntamento occasionale, e rimossi
 per tornare alla scelta basata sullo storico.
+Un sesto flusso verifica la panoramica essenziale, gli appuntamenti con tre
+partecipanti, la previsione economica e la rimozione degli annullati dal
+calendario senza perderne lo storico.
 
 Ogni test UI apre un archivio isolato tramite un identificativo casuale.
 Il codice di selezione degli archivi di collaudo e' disponibile solo in Debug.
@@ -875,7 +929,7 @@ Con Xcode completo selezionato:
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-PAOLA_RELEASE_OUTPUT="$PWD/build/releases/0.5.0" \
+PAOLA_RELEASE_OUTPUT="$PWD/build/releases/0.6.0" \
   bash scripts/package-macos-release.sh
 ```
 

@@ -86,28 +86,30 @@ final class BusinessRepositoryTests: XCTestCase {
         XCTAssertEqual(stats.receivedCents, 0)
     }
 
-    func testTenUsesAndEleventhCompletionRejectAtomicallyForWholePair() async throws {
+    func testCustomCapacityExhaustionRejectsNextCompletionAtomicallyForWholeGroup() async throws {
         let store = try BusinessTestStore.make()
         let context = store.mainContext
         let first = try BusinessTestStore.addClient(context)
         let second = try BusinessTestStore.addClient(context, name: "Elena")
         let repo = BusinessRepository(context: context)
-        let packageID = try repo.savePackage(BusinessTestStore.package(first))
-        var eleventh = BusinessTestStore.session(second, day: 11, price: 7000)
-        eleventh.participants.append(ParticipantDraft(clientID: first.id, priceCents: 5000, packageID: packageID))
-        let eleventhID = try BusinessTestStore.seedLegacySession(eleventh, in: context)
-        for day in 1...10 {
+        var packageDraft = BusinessTestStore.package(first)
+        packageDraft.capacity = 5
+        let packageID = try repo.savePackage(packageDraft)
+        var excess = BusinessTestStore.session(second, day: 6, price: 7000)
+        excess.participants.append(ParticipantDraft(clientID: first.id, priceCents: 5000, packageID: packageID))
+        let excessID = try BusinessTestStore.seedLegacySession(excess, in: context)
+        for day in 1...5 {
             let id = try repo.saveSession(BusinessTestStore.session(first, day: day, packageID: packageID))
             try repo.setSessionStatus(id, to: .completed)
             try repo.setSessionStatus(id, to: .completed)
         }
-        XCTAssertThrowsError(try repo.setSessionStatus(eleventhID, to: .completed)) {
+        XCTAssertThrowsError(try repo.setSessionStatus(excessID, to: .completed)) {
             guard case BusinessError.packageExhausted = $0 else { return XCTFail("\($0)") }
         }
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<PackageUse>()), 10)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<PackageUse>()), 5)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<LedgerEntry>()), 2)
-        let eleventhStored = try XCTUnwrap(context.fetch(FetchDescriptor<TrainingSession>()).first { $0.id == eleventhID })
-        XCTAssertEqual(eleventhStored.status, .planned)
+        let excessStored = try XCTUnwrap(context.fetch(FetchDescriptor<TrainingSession>()).first { $0.id == excessID })
+        XCTAssertEqual(excessStored.status, .planned)
         XCTAssertFalse(context.hasChanges)
         let package = try XCTUnwrap(context.fetch(FetchDescriptor<LessonPackage>()).first)
         XCTAssertEqual(BusinessReports.remaining(package: package, uses: try context.fetch(FetchDescriptor<PackageUse>())), 0)
@@ -167,7 +169,7 @@ final class BusinessRepositoryTests: XCTestCase {
         var draft = BusinessTestStore.session(first)
         let valid = draft.participants
         for participants in [
-            [], valid + valid, valid + [ParticipantDraft(clientID: second.id, priceCents: 1)],
+            [], valid + valid,
             valid + [ParticipantDraft(clientID: second.id, priceCents: 1), ParticipantDraft(clientID: archived.id, priceCents: 1)],
             [ParticipantDraft(clientID: UUID(), priceCents: 1)],
             [ParticipantDraft(clientID: archived.id, priceCents: 1)],

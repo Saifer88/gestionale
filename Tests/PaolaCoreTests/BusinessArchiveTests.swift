@@ -12,7 +12,9 @@ final class BusinessArchiveTests: XCTestCase {
         let repo = BusinessRepository(context: context)
         var service = ServiceDraft(); service.name = "Individuale"; service.priceCents = 6000
         let serviceID = try repo.saveService(service)
-        let packageID = try repo.savePackage(BusinessTestStore.package(client))
+        var package = BusinessTestStore.package(client)
+        package.capacity = 5
+        let packageID = try repo.savePackage(package)
         var lesson = BusinessTestStore.session(client, packageID: packageID)
         lesson.serviceID = serviceID
         try repo.setSessionStatus(repo.saveSession(lesson), to: .completed)
@@ -55,6 +57,7 @@ final class BusinessArchiveTests: XCTestCase {
         XCTAssertEqual(restored.participants.sorted { $0.id.uuidString < $1.id.uuidString },
                        original.participants.sorted { $0.id.uuidString < $1.id.uuidString })
         XCTAssertEqual(restored.packages, original.packages)
+        XCTAssertEqual(restored.packages.first?.capacity, 5)
         XCTAssertEqual(restored.packageUses, original.packageUses)
         XCTAssertEqual(restored.ledgerEntries.sorted { $0.id.uuidString < $1.id.uuidString },
                        original.ledgerEntries.sorted { $0.id.uuidString < $1.id.uuidString })
@@ -94,7 +97,7 @@ final class BusinessArchiveTests: XCTestCase {
             { $0.participants[0].packageID = UUID() },
             { $0.participants[0].priceCents = -1 },
             { var p = $0.participants[0]; p.id = UUID(); $0.participants.append(p) },
-            { $0.packages[0].capacity = 11 },
+            { $0.packages[0].capacity = 0 },
             { $0.packageUses[0].sourceKey = "bad" },
             { $0.packageUses[0].packageID = UUID() },
             { $0.ledgerEntries[0].amountCents = -1 },

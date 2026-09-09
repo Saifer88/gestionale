@@ -114,12 +114,12 @@ public struct BusinessArchive: Codable, Equatable {
                 try require(serviceIDs.contains(serviceID), "Servizio della lezione mancante.")
             }
             let pair = participants.filter { $0.sessionID == session.id }
-            try require((1...2).contains(pair.count) && Set(pair.map(\.clientID)).count == pair.count,
-                        "Una lezione richiede uno o due clienti distinti.")
+            try require(!pair.isEmpty && Set(pair.map(\.clientID)).count == pair.count,
+                        "Una lezione richiede almeno un cliente, senza partecipanti duplicati.")
         }
         for package in packages {
             try require(clientIDs.contains(package.clientID), "Cliente del pacchetto mancante.")
-            try require(package.capacity == 10, "Il pacchetto deve contenere dieci lezioni.")
+            try BusinessRules.packageCapacity(package.capacity)
             try BusinessRules.amount(package.priceCents); try BusinessRules.date(package.purchasedOn)
             if let expiry = package.expiresOn {
                 try BusinessRules.date(expiry)
@@ -158,7 +158,7 @@ public struct BusinessArchive: Codable, Equatable {
         }
         for package in packages {
             try require(useSources.values.filter { $0.packageID == package.id }.count <= package.capacity,
-                        "Il pacchetto supera le dieci lezioni.")
+                        "Il pacchetto supera il numero di lezioni disponibili.")
         }
         var sources: [String: LedgerRecord] = [:]
         for entry in ledgerEntries {

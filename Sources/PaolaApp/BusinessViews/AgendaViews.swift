@@ -36,6 +36,7 @@ private enum AgendaItem: Identifiable {
 struct AgendaView: View {
     @Query(sort: \TrainingSession.startDate) private var sessions: [TrainingSession]
     @Query private var participants: [SessionParticipant]
+    @Query private var clients: [Client]
     @Query(sort: \Unavailability.startDate) private var blocks: [Unavailability]
     @State private var period: AgendaPeriod = .week
     @State private var selectedDate = Date()
@@ -54,9 +55,8 @@ struct AgendaView: View {
         let matchingPeople = Set(participants.filter {
             $0.clientName.localizedStandardContains(search)
         }.map(\.sessionID))
-        return sessions.filter {
-            BusinessDates.overlaps(interval.start, interval.end, $0.startDate, $0.endDate)
-                && (status == nil || $0.status == status)
+        return CalendarAppointments.visible(sessions, in: interval).filter {
+            (status == nil || $0.status == status)
                 && (search.isEmpty || $0.serviceName.localizedStandardContains(search) || matchingPeople.contains($0.id))
         }
     }
@@ -79,7 +79,7 @@ struct AgendaView: View {
 
     var body: some View {
         Group {
-            if let error = _sessions.fetchError ?? _participants.fetchError ?? _blocks.fetchError {
+            if let error = _sessions.fetchError ?? _participants.fetchError ?? _blocks.fetchError ?? _clients.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
                 agenda
@@ -148,7 +148,7 @@ struct AgendaView: View {
     private var filters: some View {
         Picker("Stato", selection: $status) {
             Text("Tutti gli stati").tag(nil as SessionStatus?)
-            ForEach(SessionStatus.allCases) { Text($0.title).tag(Optional($0)) }
+            ForEach(SessionStatus.allCases.filter { $0 != .cancelled }) { Text($0.title).tag(Optional($0)) }
         }
         Toggle("Pause e ferie", isOn: $includeBlocks)
     }
@@ -231,11 +231,12 @@ struct AgendaView: View {
             NavigationLink {
                 SessionDetailView(session: session)
             } label: {
-                SessionSummaryRow(
-                    session: session, participants: participants,
+                CalendarSessionRow(
+                    session: session, participants: participants, clients: clients,
                     conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: blocks).isEmpty
                 )
             }
+            .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
         }
     }
 
@@ -293,7 +294,7 @@ struct SessionDetailView: View {
         .navigationTitle(session.serviceName)
         .accessibilityIdentifier("session.detail")
         .toolbar {
-            if session.status != .completed && people.count == 1 {
+            if session.status != .completed {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Modifica") { editing = true }.disabled(operation.committed)
                 }
@@ -328,7 +329,7 @@ struct SessionDetailView: View {
                 LabeledContent("Fine", value: BusinessFormatting.dateTime(session.endDate))
                 LabeledContent("Durata", value: "\(session.durationMinutes) minuti")
             }
-            Section(people.count > 1 ? "Partecipanti dello storico" : "Cliente") {
+            Section(people.count > 1 ? "Partecipanti" : "Cliente") {
                 ForEach(people) { person in
                     VStack(alignment: .leading, spacing: 5) {
                         if let client = clients.first(where: { $0.id == person.clientID }) {

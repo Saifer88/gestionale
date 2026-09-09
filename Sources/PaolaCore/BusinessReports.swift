@@ -131,7 +131,9 @@ public enum BusinessReports {
         var packagesByID: [UUID: LessonPackage] = [:]
         for package in packages {
             packagesByID[package.id] = package
-            if package.capacity != 10 || package.priceCents < 0 { warn("Un pacchetto ha capienza o prezzo non validi.") }
+            if (try? BusinessRules.packageCapacity(package.capacity)) == nil || package.priceCents < 0 {
+                warn("Un pacchetto ha capienza o prezzo non validi.")
+            }
             let source = BusinessRules.packageSource(package.id)
             if let charge = entrySources[source] {
                 if charge.kind != .charge || charge.clientID != package.clientID

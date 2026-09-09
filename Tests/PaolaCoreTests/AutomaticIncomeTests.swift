@@ -33,6 +33,38 @@ final class AutomaticIncomeTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
+    func testPackagePersistsCustomCapacityAndUsesItInAccountingDescription() async throws {
+        let store = try BusinessTestStore.make()
+        let context = store.mainContext
+        let client = try BusinessTestStore.addClient(context)
+        var draft = BusinessTestStore.package(client)
+        draft.capacity = 5
+
+        let id = try BusinessRepository(context: context).savePackage(draft)
+
+        let package = try XCTUnwrap(context.fetch(FetchDescriptor<LessonPackage>()).first { $0.id == id })
+        XCTAssertEqual(package.capacity, 5)
+        let entries = try context.fetch(FetchDescriptor<LedgerEntry>())
+        XCTAssertEqual(entries.filter { $0.sourceKey.contains(id.uuidString.lowercased()) }.map(\.notes),
+                       ["Pacchetto 5 lezioni", "Pacchetto 5 lezioni"])
+    }
+
+    func testPackageRejectsCapacityOutsideSupportedRangeWithoutWriting() async throws {
+        let store = try BusinessTestStore.make()
+        let context = store.mainContext
+        let client = try BusinessTestStore.addClient(context)
+        let repository = BusinessRepository(context: context)
+
+        for capacity in [0, 1001] {
+            var draft = BusinessTestStore.package(client)
+            draft.capacity = capacity
+            XCTAssertThrowsError(try repository.savePackage(draft))
+        }
+
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<LessonPackage>()), 0)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<LedgerEntry>()), 0)
+    }
+
     func testReceiptUsesCompletionEventDateRatherThanScheduledYearAndIsIdempotent() async throws {
         let store = try BusinessTestStore.make()
         let context = store.mainContext
@@ -139,7 +171,7 @@ final class AutomaticIncomeTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
-    func testLegacyPairCannotBeEditedOrConvertedButStatusAndCompletionRemainAvailable() async throws {
+    func testGroupCanBeEditedBeforeCompletionAndPreservesIndividualIncome() async throws {
         let store = try BusinessTestStore.make()
         let context = store.mainContext
         let first = try BusinessTestStore.addClient(context)
@@ -147,9 +179,7 @@ final class AutomaticIncomeTests: XCTestCase {
         var draft = BusinessTestStore.session(first)
         draft.participants.append(ParticipantDraft(clientID: second.id, priceCents: 3000))
         let repository = BusinessRepository(context: context)
-        XCTAssertThrowsError(try repository.saveSession(draft))
-        XCTAssertEqual(try BusinessArchive.capture(context: context).recordCount, 0)
-        draft.id = try BusinessTestStore.seedLegacySession(draft, in: context)
+        draft.id = try repository.saveSession(draft)
         let before = try BusinessArchive.capture(context: context)
         for edited in [draft, {
             var edit = draft
@@ -157,19 +187,18 @@ final class AutomaticIncomeTests: XCTestCase {
             edit.startDate = edit.startDate.addingTimeInterval(7200)
             return edit
         }()] {
-            XCTAssertThrowsError(try repository.saveSession(edited, allowOverlap: true)) {
-                guard case BusinessError.legacyPairSessionLocked = $0 else { return XCTFail("\($0)") }
-            }
-            XCTAssertEqual(try BusinessArchive.capture(context: context), before)
+            XCTAssertNoThrow(try repository.saveSession(edited, allowOverlap: true))
         }
+        try repository.saveSession(draft, allowOverlap: true)
         let id = try XCTUnwrap(draft.id)
         for status in [SessionStatus.cancelled, .noShow, .planned, .completed] {
             try repository.setSessionStatus(id, to: status, completionDate: BusinessTestStore.date)
         }
         let after = try BusinessArchive.capture(context: context)
-        XCTAssertEqual(after.participants, before.participants)
+        XCTAssertEqual(after.participants.map(\.clientID).sorted { $0.uuidString < $1.uuidString },
+                       before.participants.map(\.clientID).sorted { $0.uuidString < $1.uuidString })
         XCTAssertEqual(after.sessions.first?.startDate, before.sessions.first?.startDate)
-        XCTAssertTrue(after.preferences.isEmpty)
+        XCTAssertEqual(after.preferences.count, 2)
         XCTAssertEqual(after.ledgerEntries.filter { $0.kindRaw == "payment" }.map(\.amountCents).sorted(), [3000, 5000])
         try after.validate(clientIDs: [first.id, second.id])
     }

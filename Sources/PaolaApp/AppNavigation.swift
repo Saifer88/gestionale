@@ -93,10 +93,7 @@ struct AppNavigation: View {
     private func destination(_ section: AppSection) -> some View {
         switch section {
         case .overview:
-            OverviewView(
-                openClients: { selectedSection = .clients },
-                addClient: { showingNewClient = true }
-            )
+            OverviewView(addClient: { showingNewClient = true })
         case .clients:
             ClientsView()
         case .agenda:

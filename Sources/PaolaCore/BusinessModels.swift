@@ -231,6 +231,7 @@ public struct PackageDraft {
     public var clientID = UUID()
     public var purchasedOn = Date()
     public var priceCents: Int64 = 0
+    public var capacity = 10
     public var expiresOn: Date?
     public var notes = ""
     public init() {}
@@ -261,7 +262,6 @@ public enum BusinessError: Error, LocalizedError {
     case notFound(String)
     case overlap
     case completedSessionLocked
-    case legacyPairSessionLocked
     case manualPaymentsDisabled
     case packageExhausted
     case inconsistentData(String)
@@ -274,7 +274,6 @@ public enum BusinessError: Error, LocalizedError {
         case .notFound(let name): return "\(name) non trovato."
         case .overlap: return "L'orario si sovrappone a una lezione o a un'indisponibilità."
         case .completedSessionLocked: return "Una lezione completata non può essere modificata o riaperta."
-        case .legacyPairSessionLocked: return "Le lezioni storiche in coppia non possono essere modificate. È possibile solo aggiornarne lo stato."
         case .manualPaymentsDisabled: return "Gli incassi vengono registrati automaticamente all'acquisto di un pacchetto o al completamento di una lezione. I pagamenti manuali non sono più disponibili."
         case .packageExhausted: return "Il pacchetto non ha lezioni disponibili."
         case .amountExceeded: return "L'importo supera il residuo dell'operazione originale."
@@ -306,6 +305,11 @@ internal enum BusinessRules {
     static func duration(_ minutes: Int) throws {
         guard (1...1440).contains(minutes) else {
             throw BusinessError.invalidInput("La durata deve essere compresa tra 1 e 1440 minuti.")
+        }
+    }
+    static func packageCapacity(_ capacity: Int) throws {
+        guard (1...1000).contains(capacity) else {
+            throw BusinessError.invalidInput("Il numero di lezioni deve essere compreso tra 1 e 1000.")
         }
     }
     static func add(_ lhs: Int64, _ rhs: Int64) throws -> Int64 {

@@ -20,6 +20,7 @@ struct SessionEditor: View {
     @State private var packageID: UUID?
     @State private var price = "0,00"
     @State private var rateID: UUID?
+    @State private var additionalPeople: [AdditionalParticipantDraft] = []
     @State private var loaded = false
     @State private var confirmingOverlap = false
     @State private var notices: [String] = []
@@ -44,7 +45,7 @@ struct SessionEditor: View {
     private var originalParticipants: [SessionParticipant] {
         participants.filter { $0.sessionID == session?.id }.sorted { $0.id.uuidString < $1.id.uuidString }
     }
-    private var readOnly: Bool { session?.status == .completed || originalParticipants.count > 1 }
+    private var readOnly: Bool { session?.status == .completed }
     private var readError: Error? {
         let errors: [Error?] = [
             _clients.fetchError, _services.fetchError, _participants.fetchError, _packages.fetchError,
@@ -120,7 +121,9 @@ struct SessionEditor: View {
     private var editorForm: some View {
         Form {
             Section {
-                BusinessClientPicker(title: "Cliente", clients: selectableClients, selection: Binding(
+                BusinessClientPicker(title: "Cliente", clients: selectableClients.filter { client in
+                    !additionalPeople.contains(where: { $0.clientID == client.id })
+                }, selection: Binding(
                     get: { clientID },
                     set: { value in
                         let changed = value != clientID
@@ -146,9 +149,6 @@ struct SessionEditor: View {
             } else {
                 if readOnly {
                     Label("Appuntamento storico: orario e partecipanti non modificabili.", systemImage: "lock")
-                    if originalParticipants.count > 1 {
-                        ForEach(originalParticipants) { Text($0.clientName) }
-                    }
                 }
                 if !notices.isEmpty {
                     Section("Scelte proposte") {
@@ -158,6 +158,20 @@ struct SessionEditor: View {
                 Group {
                     scheduleSection
                     billingSection
+                    ForEach($additionalPeople) { $person in
+                        additionalEditor($person)
+                    }
+                    Section {
+                        Button("Aggiungi partecipante", systemImage: "person.badge.plus") {
+                            var person = AdditionalParticipantDraft()
+                            person.rateID = tariffOptions.first?.id
+                            person.price = BusinessFormatting.editableMoney(tariffOptions.first?.priceCents ?? 0)
+                            additionalPeople.append(person)
+                        }
+                        .accessibilityIdentifier("session.addParticipant")
+                    } footer: {
+                        Text("Servizio, giorno e orario sono condivisi. Ogni partecipante ha una propria tariffa e può usare il proprio pacchetto.")
+                    }
                     if session == nil {
                         Section("Selezione rapida") {
                             AppointmentQuickChoices(startDate: $draft.startDate, durationMinutes: draft.durationMinutes,
@@ -234,18 +248,12 @@ struct SessionEditor: View {
     }
 
     private var availablePackages: [LessonPackage] {
-        packages.filter { package in
-            package.clientID == clientID && (package.id == packageID ||
-                (package.purchasedOn <= draft.startDate &&
-                 (package.expiresOn.map { BusinessDates.exclusiveEnd($0) > draft.startDate } ?? true) &&
-                 BusinessReports.remaining(package: package, uses: uses) > 0))
-        }.sorted { $0.purchasedOn < $1.purchasedOn }
+        SessionPackageChoices.available(clientID: clientID, selectedID: packageID,
+                                        date: draft.startDate, packages: packages, uses: uses)
     }
 
     private func packageLabel(_ package: LessonPackage) -> String {
-        let remaining = BusinessReports.remaining(package: package, uses: uses)
-        return "Pacchetto del \(BusinessFormatting.day(package.purchasedOn)) · \(remaining)/10 residue"
-            + (package.expiresOn.map { " · scade \(BusinessFormatting.day($0))" } ?? " · senza scadenza")
+        SessionPackageChoices.label(package, uses: uses)
     }
 
     private func load() {
@@ -255,6 +263,14 @@ struct SessionEditor: View {
             price = BusinessFormatting.editableMoney(person.priceCents)
             packageID = person.packageID
             rateID = tariffOptions.first { $0.priceCents == person.priceCents }?.id
+            additionalPeople = originalParticipants.dropFirst().map { person in
+                var value = AdditionalParticipantDraft()
+                value.clientID = person.clientID
+                value.packageID = person.packageID
+                value.price = BusinessFormatting.editableMoney(person.priceCents)
+                value.rateID = tariffOptions.first { $0.priceCents == person.priceCents }?.id
+                return value
+            }
         } else if session == nil, clientID != nil {
             applyPreferences()
         }
@@ -285,6 +301,7 @@ struct SessionEditor: View {
             price = BusinessFormatting.editableMoney(selected.priceCents)
             packageID = selected.packageID
             notices = selected.notices
+            for id in additionalPeople.map(\.id) { configureAdditional(id, updatePackage: true) }
         } catch { operation.capture(error) }
     }
 
@@ -296,6 +313,7 @@ struct SessionEditor: View {
         let rate = ServiceTariffs.options(for: service, rates: rates).first
         rateID = rate?.id
         price = BusinessFormatting.editableMoney(rate?.priceCents ?? service.priceCents)
+        for id in additionalPeople.map(\.id) { configureAdditional(id, updatePackage: false) }
     }
 
     private func selectRate(_ id: UUID?) {
@@ -313,6 +331,43 @@ struct SessionEditor: View {
             + (service.isActive ? "" : " · disattivato")
     }
 
+    private func additionalEditor(_ person: Binding<AdditionalParticipantDraft>) -> some View {
+        let id = person.wrappedValue.id
+        let number = (additionalPeople.firstIndex { $0.id == id } ?? 0) + 2
+        let available = selectableClients.filter { client in
+            client.id != clientID && !additionalPeople.contains { $0.id != id && $0.clientID == client.id }
+        }
+        return AdditionalParticipantEditor(person: person, number: number, clients: available,
+            tariffs: tariffOptions, packages: packages, uses: uses, startDate: draft.startDate,
+            onClientChange: { configureAdditional(id, updatePackage: true) },
+            onRemove: { additionalPeople.removeAll { $0.id == id } })
+    }
+
+    private func configureAdditional(_ id: UUID, updatePackage: Bool) {
+        guard let index = additionalPeople.firstIndex(where: { $0.id == id }) else { return }
+        let personID = additionalPeople[index].clientID
+        let client = clients.first { $0.id == personID }
+        let previous = personID.flatMap {
+            AppointmentPreferences.lastUsed(clientID: $0, sessions: sessions, participants: participants, preferences: preferences)
+        }
+        var chosen = tariffOptions.first
+        var cents = chosen?.priceCents ?? 0
+        if client?.preferredServiceID == draft.serviceID, client?.preferredServiceID != nil {
+            chosen = tariffOptions.first { $0.id == client?.preferredRateID } ?? tariffOptions.first
+            cents = chosen?.priceCents ?? 0
+        } else if let previous, previous.serviceID == draft.serviceID {
+            chosen = tariffOptions.first { $0.id == previous.rateID }
+            cents = chosen?.priceCents ?? previous.priceCents
+        }
+        additionalPeople[index].rateID = chosen?.id
+        additionalPeople[index].price = BusinessFormatting.editableMoney(cents)
+        if updatePackage {
+            additionalPeople[index].packageID = packages.first {
+                $0.id == previous?.packageID && SessionPackageChoices.usable($0, clientID: personID, date: draft.startDate, uses: uses)
+            }?.id
+        }
+    }
+
     private func save(allowOverlap: Bool = false) {
         guard !readOnly, !operation.committed else { return }
         do {
@@ -324,6 +379,15 @@ struct SessionEditor: View {
             draft.participants = [ParticipantDraft(
                 clientID: clientID, priceCents: try Money.parse(price), packageID: packageID, tariffID: rateID
             )]
+            for person in additionalPeople {
+                guard let participantID = person.clientID else {
+                    throw BusinessInputError(message: "Seleziona il cliente per ogni partecipante oppure rimuovi la riga vuota.")
+                }
+                draft.participants.append(ParticipantDraft(
+                    clientID: participantID, priceCents: try Money.parse(person.price),
+                    packageID: person.packageID, tariffID: person.rateID
+                ))
+            }
             _ = try BusinessRepository(context: context).saveSession(draft, allowOverlap: allowOverlap)
             dismiss()
         } catch BusinessError.overlap {
