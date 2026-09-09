@@ -24,6 +24,8 @@
     <string>$(PAOLA_CLOUD_ENABLED)</string>
     <key>PaolaCloudContainerIdentifier</key>
     <string>$(PAOLA_CLOUD_CONTAINER)</string>
+    <key>PaolaLocalBuild</key>
+    <string>NO</string>
     <key>NSFaceIDUsageDescription</key>
     <string>Sblocca il gestionale e proteggi i dati dei clienti.</string>
     <key>UIBackgroundModes</key>

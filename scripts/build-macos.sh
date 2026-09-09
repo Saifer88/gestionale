@@ -55,6 +55,15 @@ plutil -replace CFBundleExecutable -string PaolaGestionale "$APP/Contents/Info.p
 plutil -replace CFBundleIdentifier -string local.paola.gestionale.preview "$APP/Contents/Info.plist"
 plutil -replace PaolaCloudEnabled -string NO "$APP/Contents/Info.plist"
 plutil -replace PaolaCloudContainerIdentifier -string "" "$APP/Contents/Info.plist"
+# Marca le build come locali di sviluppo salvo diversa indicazione. Il packaging
+# di release imposta PAOLA_LOCAL_BUILD=NO. Le build locali non propongono
+# aggiornamenti da GitHub (vedi AppUpdater), per non sostituire una build di sviluppo.
+PAOLA_LOCAL_BUILD="${PAOLA_LOCAL_BUILD:-YES}"
+case "$PAOLA_LOCAL_BUILD" in
+    YES|NO) ;;
+    *) printf 'PAOLA_LOCAL_BUILD deve essere YES oppure NO.\n' >&2; exit 1 ;;
+esac
+plutil -replace PaolaLocalBuild -string "$PAOLA_LOCAL_BUILD" "$APP/Contents/Info.plist"
 plutil -replace LSMinimumSystemVersion -string 14.0 "$APP/Contents/Info.plist"
 plutil -replace CFBundleSupportedPlatforms -json '["MacOSX"]' "$APP/Contents/Info.plist"
 if [[ -n "${PAOLA_BUILD_NUMBER:-}" ]]; then

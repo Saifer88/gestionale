@@ -19,7 +19,7 @@ if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app/Contents/Developer ]
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 
-APP_OUTPUT="${PAOLA_APP_OUTPUT:-$ROOT/build/Paola Gestionale.app}"
+APP_OUTPUT="${PAOLA_APP_OUTPUT:-$ROOT/Paola Gestionale.app}"
 
 PAOLA_APP_OUTPUT="$APP_OUTPUT" bash "$ROOT/scripts/build-macos.sh"
 

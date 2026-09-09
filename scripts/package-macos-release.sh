@@ -41,6 +41,7 @@ PAOLA_BUILD_CONFIGURATION=release \
 PAOLA_UNIVERSAL=1 \
 PAOLA_BUILD_NUMBER="$BUILD_NUMBER" \
 PAOLA_VERSION_PATCH="$VERSION_PATCH" \
+PAOLA_LOCAL_BUILD=NO \
 PAOLA_BUILD_PATH="${PAOLA_BUILD_PATH:-$ROOT/build/macos-release/swiftpm}" \
 PAOLA_APP_OUTPUT="$APP" \
     bash "$ROOT/scripts/build-macos.sh"
@@ -50,7 +51,8 @@ codesign --verify --strict "$APP"
 if [[ "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")" != "$VERSION" \
    || "$(plutil -extract CFBundleVersion raw -o - "$APP/Contents/Info.plist")" != "$BUILD_NUMBER" \
    || "$(plutil -extract CFBundleIdentifier raw -o - "$APP/Contents/Info.plist")" != local.paola.gestionale.preview \
-   || "$(plutil -extract PaolaCloudEnabled raw -o - "$APP/Contents/Info.plist")" != NO ]]; then
+   || "$(plutil -extract PaolaCloudEnabled raw -o - "$APP/Contents/Info.plist")" != NO \
+   || "$(plutil -extract PaolaLocalBuild raw -o - "$APP/Contents/Info.plist")" != NO ]]; then
     printf 'Metadati del bundle release inattesi.\n' >&2
     exit 1
 fi

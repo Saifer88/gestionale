@@ -15,7 +15,7 @@ struct AppUpdateSection: View {
             } label: {
                 Label("Controlla aggiornamenti", systemImage: "arrow.triangle.2.circlepath")
             }
-            .disabled(updater.isBusy)
+            .disabled(updater.isBusy || updater.isLocalBuild)
             .accessibilityIdentifier("update.check")
 
             statusView
@@ -47,6 +47,7 @@ struct AppUpdateSection: View {
         } message: {
             Text("La nuova versione è stata scaricata e verificata. Nel Finder appena aperto, chiudi questa app e trascina “Paola Gestionale.app” in Applicazioni sostituendo quella esistente, poi riaprila.")
         }
+        .onAppear { updater.prepareInitialState() }
     }
 
     private var isReady: Bool {
@@ -69,6 +70,9 @@ struct AppUpdateSection: View {
             }
         case .upToDate:
             Label("L'app è aggiornata all'ultima versione.", systemImage: "checkmark.circle")
+                .font(.caption).foregroundStyle(.secondary)
+        case .localBuild:
+            Label("Build locale di sviluppo: il controllo aggiornamenti è disattivato.", systemImage: "hammer")
                 .font(.caption).foregroundStyle(.secondary)
         case .ready:
             Label("Pacchetto pronto nel Finder.", systemImage: "shippingbox")

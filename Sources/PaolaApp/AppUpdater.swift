@@ -21,6 +21,7 @@ final class AppUpdater: ObservableObject {
         case downloading(progress: Double)
         case ready(URL)
         case upToDate
+        case localBuild
         case failed(String)
     }
 
@@ -31,19 +32,28 @@ final class AppUpdater: ObservableObject {
     private let repository: GitHubRepository
     private let session: URLSession
     private let currentVersion: AppVersion
+    private let localBuild: Bool
 
     init(repository: GitHubRepository = .paola,
          session: URLSession = .shared,
-         currentVersion: AppVersion? = nil) {
+         currentVersion: AppVersion? = nil,
+         isLocalBuild: Bool = AppUpdater.installedIsLocalBuild()) {
         self.repository = repository
         self.session = session
         self.currentVersion = currentVersion ?? AppUpdater.installedVersion()
+        self.localBuild = isLocalBuild
     }
 
     /// Legge la versione installata da `CFBundleShortVersionString`.
-    static func installedVersion() -> AppVersion {
+    nonisolated static func installedVersion() -> AppVersion {
         let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
         return AppVersion(raw) ?? AppVersion(major: 0, minor: 0, patch: 0)
+    }
+
+    /// Le build locali di sviluppo (create da build-app.sh) sono marcate `PaolaLocalBuild=YES`
+    /// e non devono proporre aggiornamenti da GitHub.
+    nonisolated static func installedIsLocalBuild() -> Bool {
+        (Bundle.main.object(forInfoDictionaryKey: "PaolaLocalBuild") as? String) == "YES"
     }
 
     var currentVersionText: String { currentVersion.description }
@@ -55,8 +65,14 @@ final class AppUpdater: ObservableObject {
         }
     }
 
+    var isLocalBuild: Bool { localBuild }
+
     /// Interroga GitHub e, se c'è una versione più recente, prepara la conferma.
     func checkForUpdates() async {
+        guard !localBuild else {
+            phase = .localBuild
+            return
+        }
         phase = .checking
         availableRelease = nil
         do {
@@ -108,6 +124,11 @@ final class AppUpdater: ObservableObject {
     }
 
     func reset() { phase = .idle; availableRelease = nil }
+
+    /// Da chiamare all'apparire della vista: mostra subito lo stato di build locale.
+    func prepareInitialState() {
+        if localBuild { phase = .localBuild }
+    }
 
     // MARK: - Rete
 
