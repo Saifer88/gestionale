@@ -4,6 +4,10 @@ import SwiftUI
 
 @main
 struct PaolaApp: App {
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
+
     var body: some Scene {
         #if os(macOS)
         Window("Paola Gestionale", id: "main") {
@@ -70,3 +74,28 @@ private struct ApplicationRoot: View {
         }
     }
 }
+
+#if os(macOS)
+import AppKit
+
+/// Mantiene l'app in esecuzione quando si chiude la finestra: l'icona resta nel Dock
+/// e cliccandola la finestra viene riaperta. L'uscita vera resta disponibile da
+/// menu/⌘Q e dalla chiusura forzata dell'aggiornamento (NSApp.terminate).
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Se non c'è una finestra visibile, ripristina/porta in primo piano quella principale.
+        if !flag {
+            for window in sender.windows where window.canBecomeMain {
+                window.deminiaturize(nil)
+                window.makeKeyAndOrderFront(nil)
+            }
+            sender.activate(ignoringOtherApps: true)
+        }
+        return true
+    }
+}
+#endif
