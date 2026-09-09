@@ -10,10 +10,13 @@ public struct AppVersion: Comparable, Equatable, CustomStringConvertible, Sendab
         self.major = major; self.minor = minor; self.patch = patch
     }
 
-    /// Interpreta stringhe come `0.6`, `0.6.42` o `v0.6.42`. La patch mancante vale 0.
+    /// Interpreta stringhe come `0.6`, `0.6.42`, `v0.6.42` o il tag di release
+    /// `v0.6.42-build.42`. Il prefisso `v` e qualsiasi suffisso dopo `-`
+    /// (metadata di build/pre-release) vengono ignorati. La patch mancante vale 0.
     public init?(_ raw: String) {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.hasPrefix("v") || text.hasPrefix("V") { text.removeFirst() }
+        if let dash = text.firstIndex(of: "-") { text = String(text[..<dash]) }
         let parts = text.split(separator: ".", omittingEmptySubsequences: false)
         guard (2...3).contains(parts.count) else { return nil }
         let numbers = parts.map { Int($0) }

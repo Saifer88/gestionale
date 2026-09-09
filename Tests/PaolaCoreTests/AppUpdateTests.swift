@@ -12,6 +12,13 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertEqual(AppVersion(" V1.2.3 "), AppVersion(major: 1, minor: 2, patch: 3))
     }
 
+    func testVersionParsingIgnoresReleaseBuildSuffix() {
+        // Il tag reale della pipeline è del tipo v0.6.42-build.42.
+        XCTAssertEqual(AppVersion("v0.6.42-build.42"), AppVersion(major: 0, minor: 6, patch: 42))
+        XCTAssertEqual(AppVersion("0.7.0-build.1"), AppVersion(major: 0, minor: 7, patch: 0))
+        XCTAssertEqual(AppVersion("1.2-beta"), AppVersion(major: 1, minor: 2, patch: 0))
+    }
+
     func testVersionParsingRejectsMalformedStrings() {
         XCTAssertNil(AppVersion("0"))
         XCTAssertNil(AppVersion("0.6.42.1"))
@@ -62,6 +69,18 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertThrowsError(try GitHubReleaseParser.parseLatestRelease(noAsset)) { error in
             XCTAssertEqual(error as? UpdateError, .noCompatibleAsset)
         }
+    }
+
+    func testParseLatestReleaseReadsVersionFromRealBuildTag() throws {
+        let json = Data("""
+        {"tag_name":"v0.6.42-build.42","draft":false,"body":"note","assets":[
+          {"name":"PaolaGestionale-macOS-universal-v0.6.42-build.42.zip",
+           "browser_download_url":"https://example.com/app.zip","size":10}
+        ]}
+        """.utf8)
+        let release = try GitHubReleaseParser.parseLatestRelease(json)
+        XCTAssertEqual(release.tag, "v0.6.42-build.42")
+        XCTAssertEqual(release.version, AppVersion(major: 0, minor: 6, patch: 42))
     }
 
     func testParseLatestReleaseWithoutChecksumsStillParses() throws {
