@@ -262,6 +262,7 @@ public enum BusinessError: Error, LocalizedError {
     case notFound(String)
     case overlap
     case completedSessionLocked
+    case serviceInUse
     case manualPaymentsDisabled
     case packageExhausted
     case inconsistentData(String)
@@ -274,6 +275,7 @@ public enum BusinessError: Error, LocalizedError {
         case .notFound(let name): return "\(name) non trovato."
         case .overlap: return "L'orario si sovrappone a una lezione o a un'indisponibilità."
         case .completedSessionLocked: return "Una lezione completata non può essere modificata o riaperta."
+        case .serviceInUse: return "Il servizio è usato in uno o più appuntamenti e non può essere eliminato senza perdere lo storico. Disattivalo per non proporlo nei nuovi appuntamenti."
         case .manualPaymentsDisabled: return "Gli incassi vengono registrati automaticamente all'acquisto di un pacchetto o al completamento di una lezione. I pagamenti manuali non sono più disponibili."
         case .packageExhausted: return "Il pacchetto non ha lezioni disponibili."
         case .amountExceeded: return "L'importo supera il residuo dell'operazione originale."

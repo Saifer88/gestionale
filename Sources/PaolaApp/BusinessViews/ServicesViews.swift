@@ -3,12 +3,14 @@ import SwiftData
 import SwiftUI
 
 struct ServicesView: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \TrainingService.name) private var services: [TrainingService]
     @Query private var rates: [ServiceRate]
     @State private var showInactive = false
     @State private var search = ""
     @State private var creating = false
     @State private var editing: TrainingService?
+    @State private var operation = BusinessOperation()
 
     private var visibleServices: [TrainingService] {
         services.filter {
@@ -58,6 +60,12 @@ struct ServicesView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing) {
+                            Button("Elimina", systemImage: "trash", role: .destructive) {
+                                delete(service)
+                            }
+                            .accessibilityIdentifier("services.delete")
+                        }
                     }
                 }
             }
@@ -73,6 +81,13 @@ struct ServicesView: View {
         }
         .sheet(isPresented: $creating) { ServiceEditor() }
         .sheet(item: $editing) { ServiceEditor(service: $0) }
+        .businessError($operation)
+    }
+
+    private func delete(_ service: TrainingService) {
+        do {
+            try BusinessRepository(context: context).deleteService(service.id)
+        } catch { operation.capture(error) }
     }
 }
 
@@ -97,6 +112,7 @@ struct ServiceEditor: View {
     @State private var editedRates = [EditableServiceRate()]
     @State private var loaded = false
     @State private var operation = BusinessOperation()
+    @State private var confirmingDelete = false
 
     init(service: TrainingService? = nil) {
         self.service = service
@@ -145,6 +161,16 @@ struct ServiceEditor: View {
                         } footer: {
                             Text("Disattivare un servizio conserva lo storico. Il prezzo si riferisce al cliente della lezione.")
                         }
+                        if service != nil {
+                            Section {
+                                Button("Elimina servizio", systemImage: "trash", role: .destructive) {
+                                    confirmingDelete = true
+                                }
+                                .accessibilityIdentifier("service.delete")
+                            } footer: {
+                                Text("L'eliminazione rimuove il servizio e le sue tariffe. È possibile solo se nessun appuntamento lo usa: altrimenti disattivalo per conservare lo storico.")
+                            }
+                        }
                     }
                     .formStyle(.grouped)
                 }
@@ -172,6 +198,20 @@ struct ServiceEditor: View {
             loaded = true
         }
         .businessError($operation, onCommitted: { dismiss() })
+        .confirmationDialog("Eliminare il servizio?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Elimina servizio", role: .destructive, action: delete)
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("L'operazione non può essere annullata. È consentita solo se nessun appuntamento usa il servizio.")
+        }
+    }
+
+    private func delete() {
+        guard let id = draft.id else { return }
+        do {
+            try BusinessRepository(context: context).deleteService(id)
+            dismiss()
+        } catch { operation.capture(error) }
     }
 
     private func rateFields(_ rate: Binding<EditableServiceRate>) -> some View {

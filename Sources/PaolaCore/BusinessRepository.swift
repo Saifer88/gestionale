@@ -69,6 +69,31 @@ public final class BusinessRepository {
         }
     }
 
+    public func deleteService(_ id: UUID) throws {
+        try transact { writer in
+            let service = try find(id, in: writer, type: TrainingService.self, name: "Servizio")
+            // Lo storico degli appuntamenti è congelato: se un appuntamento (in qualsiasi
+            // stato, inclusi annullati e assenze conservati nello storico) referenzia il
+            // servizio, la cancellazione lo distruggerebbe. In quel caso si usa la disattivazione.
+            let sessions = try writer.fetch(FetchDescriptor<TrainingSession>())
+            guard !sessions.contains(where: { $0.serviceID == id }) else {
+                throw BusinessError.serviceInUse
+            }
+            // Le tariffe del servizio vengono rimosse insieme al servizio.
+            for rate in try writer.fetch(FetchDescriptor<ServiceRate>()) where rate.serviceID == id {
+                writer.delete(rate)
+            }
+            // Le preferenze cliente che puntavano al servizio ripiegano sulle ultime scelte.
+            for preference in try writer.fetch(FetchDescriptor<ClientAppointmentPreference>())
+            where preference.serviceID == id {
+                preference.serviceID = nil
+                preference.rateID = nil
+                preference.updatedAt = Date()
+            }
+            writer.delete(service)
+        }
+    }
+
     @discardableResult
     public func saveSession(_ draft: SessionDraft, allowOverlap: Bool = false) throws -> UUID {
         try transact { writer in

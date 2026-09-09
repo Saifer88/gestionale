@@ -8,6 +8,10 @@ struct SettingsView: View {
     @State private var notificationError: String?
     @State private var creatingBlock = false
 
+    private static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    }
+
     var body: some View {
         Form {
             Section("Gestione") {
@@ -57,8 +61,11 @@ struct SettingsView: View {
                 Text("Notifiche senza nomi o dati personali. Sono programmati fino a 60 promemoria futuri per dispositivo; riapri l'app per aggiornare la coda.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: { Text("Notifiche") }
+            #if os(macOS)
+            AppUpdateSection()
+            #endif
             Section("Applicazione") {
-                LabeledContent("Versione", value: "0.6.0")
+                LabeledContent("Versione", value: Self.appVersion)
                 LabeledContent("Utilizzo", value: "Un personal trainer, clienti fitness")
                 Text("Nessuna telemetria. Documenti non fiscali. Anamnesi e analisi fisica sono campi riservati: registra solo i dati necessari e legittimamente trattabili. Usa il blocco dell'app e conserva backup cifrati.")
                     .font(.caption).foregroundStyle(.secondary)

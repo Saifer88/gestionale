@@ -5,16 +5,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 plutil -lint "$ROOT/App/Info.plist"
-VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$ROOT/App/Info.plist")"
-BUILD_NUMBER="${PAOLA_BUILD_NUMBER:-${GITHUB_RUN_NUMBER:-$(plutil -extract CFBundleVersion raw -o - "$ROOT/App/Info.plist")}}"
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    printf 'CFBundleShortVersionString deve avere formato numerico major.minor.patch.\n' >&2
+BASE_VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$ROOT/App/Info.plist")"
+if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    printf 'CFBundleShortVersionString deve avere formato major.minor (es. 0.6). La patch è automatica.\n' >&2
     exit 1
 fi
+BUILD_NUMBER="${PAOLA_BUILD_NUMBER:-${GITHUB_RUN_NUMBER:-$(plutil -extract CFBundleVersion raw -o - "$ROOT/App/Info.plist")}}"
 if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
     printf 'Il numero di build deve essere un intero positivo.\n' >&2
     exit 1
 fi
+# Patch incrementale: in release deriva dal numero di build (github.run_number),
+# così ogni release ha una versione major.minor.patch crescente senza modifiche manuali.
+VERSION_PATCH="${PAOLA_VERSION_PATCH:-$BUILD_NUMBER}"
+if [[ ! "$VERSION_PATCH" =~ ^[0-9]+$ ]]; then
+    printf 'PAOLA_VERSION_PATCH deve essere un intero non negativo.\n' >&2
+    exit 1
+fi
+VERSION="${BASE_VERSION}.${VERSION_PATCH}"
 
 OUTPUT_DIR="${PAOLA_RELEASE_OUTPUT:-$ROOT/build/macos-release/dist}"
 case "$OUTPUT_DIR" in
@@ -32,6 +40,7 @@ NOTES_PATH="$OUTPUT_DIR/RELEASE_NOTES.txt"
 PAOLA_BUILD_CONFIGURATION=release \
 PAOLA_UNIVERSAL=1 \
 PAOLA_BUILD_NUMBER="$BUILD_NUMBER" \
+PAOLA_VERSION_PATCH="$VERSION_PATCH" \
 PAOLA_BUILD_PATH="${PAOLA_BUILD_PATH:-$ROOT/build/macos-release/swiftpm}" \
 PAOLA_APP_OUTPUT="$APP" \
     bash "$ROOT/scripts/build-macos.sh"

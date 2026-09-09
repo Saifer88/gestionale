@@ -18,6 +18,11 @@ if [[ -n "${PAOLA_BUILD_NUMBER:-}" && ! "$PAOLA_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]
     printf 'PAOLA_BUILD_NUMBER deve essere un intero positivo.\n' >&2
     exit 1
 fi
+VERSION_PATCH="${PAOLA_VERSION_PATCH:-0}"
+if [[ ! "$VERSION_PATCH" =~ ^[0-9]+$ ]]; then
+    printf 'PAOLA_VERSION_PATCH deve essere un intero non negativo.\n' >&2
+    exit 1
+fi
 
 if ! xcodebuild -version >/dev/null 2>&1; then
     printf '%s\n' "Serve Xcode completo: i Command Line Tools non includono SwiftDataMacros." >&2
@@ -38,6 +43,14 @@ APP="${PAOLA_APP_OUTPUT:-$ROOT/build/Paola Gestionale.app}"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 install -m 755 "$BIN_DIR/PaolaGestionale" "$APP/Contents/MacOS/PaolaGestionale"
 cp "$ROOT/App/Info.plist" "$APP/Contents/Info.plist"
+# La versione base nel plist è major.minor; la patch è iniettata per rendere
+# incrementali le release (patch = numero di build in CI, 0 in locale).
+BASE_VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$ROOT/App/Info.plist")"
+if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    printf 'CFBundleShortVersionString in App/Info.plist deve avere formato major.minor.\n' >&2
+    exit 1
+fi
+plutil -replace CFBundleShortVersionString -string "${BASE_VERSION}.${VERSION_PATCH}" "$APP/Contents/Info.plist"
 plutil -replace CFBundleExecutable -string PaolaGestionale "$APP/Contents/Info.plist"
 plutil -replace CFBundleIdentifier -string local.paola.gestionale.preview "$APP/Contents/Info.plist"
 plutil -replace PaolaCloudEnabled -string NO "$APP/Contents/Info.plist"
