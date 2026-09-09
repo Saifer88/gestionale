@@ -34,6 +34,8 @@ APP="$OUTPUT_DIR/Paola Gestionale.app"
 TAG="v${VERSION}-build.${BUILD_NUMBER}"
 ARCHIVE_NAME="PaolaGestionale-macOS-universal-${TAG}.zip"
 ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
+DMG_NAME="PaolaGestionale-macOS-universal-${TAG}.dmg"
+DMG_PATH="$OUTPUT_DIR/$DMG_NAME"
 CHECKSUM_PATH="$OUTPUT_DIR/SHA256SUMS.txt"
 NOTES_PATH="$OUTPUT_DIR/RELEASE_NOTES.txt"
 
@@ -59,9 +61,14 @@ fi
 
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ARCHIVE_PATH"
 unzip -t "$ARCHIVE_PATH"
+
+# DMG di installazione drag-and-drop (app + Applicazioni + freccia).
+bash "$ROOT/scripts/make-dmg.sh" "$APP" "$DMG_PATH"
+hdiutil verify "$DMG_PATH"
+
 (
     cd "$OUTPUT_DIR"
-    shasum -a 256 "$ARCHIVE_NAME" > "$CHECKSUM_PATH"
+    shasum -a 256 "$ARCHIVE_NAME" "$DMG_NAME" > "$CHECKSUM_PATH"
     shasum -a 256 --check "$CHECKSUM_PATH"
 )
 
@@ -69,8 +76,9 @@ cat > "$NOTES_PATH" <<EOF
 Paola Gestionale ${VERSION} — build ${BUILD_NUMBER}
 
 App universale per Mac Intel e Apple Silicon, macOS 14 o successivo.
-Scaricare lo ZIP ed estrarre “Paola Gestionale.app”.
-Verificare lo ZIP con: shasum -a 256 --check SHA256SUMS.txt
+Installazione consigliata: aprire il DMG e trascinare “Paola Gestionale.app” in Applicazioni.
+In alternativa è disponibile lo ZIP con la sola app.
+Verificare i file con: shasum -a 256 --check SHA256SUMS.txt
 
 Firma solo ad hoc: non firmata con Apple Developer ID e non notarizzata.
 Gatekeeper può bloccare l'apertura; questa release non offre le garanzie di una distribuzione notarizzata.
@@ -78,13 +86,15 @@ CloudKit disabilitato: archivio e backup locali, nessun account o provisioning A
 L'identificativo local.paola.gestionale.preview rimane quello della build locale.
 EOF
 
-printf '\nTag: %s\nZIP: %s\nSHA-256: %s\nNote: %s\n' "$TAG" "$ARCHIVE_PATH" "$CHECKSUM_PATH" "$NOTES_PATH"
+printf '\nTag: %s\nZIP: %s\nDMG: %s\nSHA-256: %s\nNote: %s\n' "$TAG" "$ARCHIVE_PATH" "$DMG_PATH" "$CHECKSUM_PATH" "$NOTES_PATH"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     {
         printf 'version=%s\n' "$VERSION"
         printf 'tag=%s\n' "$TAG"
         printf 'archive_name=%s\n' "$ARCHIVE_NAME"
         printf 'archive_path=%s\n' "$ARCHIVE_PATH"
+        printf 'dmg_name=%s\n' "$DMG_NAME"
+        printf 'dmg_path=%s\n' "$DMG_PATH"
         printf 'checksum_path=%s\n' "$CHECKSUM_PATH"
         printf 'notes_path=%s\n' "$NOTES_PATH"
     } >> "$GITHUB_OUTPUT"

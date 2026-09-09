@@ -21,6 +21,7 @@ jobs:
       version: ${{ steps.package.outputs.version }}
       tag: ${{ steps.package.outputs.tag }}
       archive_name: ${{ steps.package.outputs.archive_name }}
+      dmg_name: ${{ steps.package.outputs.dmg_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -48,6 +49,7 @@ jobs:
           name: macos-release-${{ github.run_id }}
           path: |
             ${{ steps.package.outputs.archive_path }}
+            ${{ steps.package.outputs.dmg_path }}
             ${{ steps.package.outputs.checksum_path }}
             ${{ steps.package.outputs.notes_path }}
           if-no-files-found: error
@@ -75,13 +77,15 @@ jobs:
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
           ARCHIVE_NAME: ${{ needs.build.outputs.archive_name }}
+          DMG_NAME: ${{ needs.build.outputs.dmg_name }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ \
              || ! "$GITHUB_RUN_NUMBER" =~ ^[1-9][0-9]*$ \
              || "$RELEASE_TAG" != "v${RELEASE_VERSION}-build.${GITHUB_RUN_NUMBER}" \
-             || "$ARCHIVE_NAME" != "PaolaGestionale-macOS-universal-${RELEASE_TAG}.zip" ]]; then
+             || "$ARCHIVE_NAME" != "PaolaGestionale-macOS-universal-${RELEASE_TAG}.zip" \
+             || "$DMG_NAME" != "PaolaGestionale-macOS-universal-${RELEASE_TAG}.dmg" ]]; then
             printf 'Invalid release metadata; publication aborted.\n' >&2
             exit 1
           fi
@@ -98,11 +102,11 @@ jobs:
               jq -e --arg tag "$RELEASE_TAG" --arg sha "$GITHUB_SHA" \
                 '.tag_name == $tag and .target_commitish == $sha and .draft == false' \
                 existing-release.json
-              gh release upload "$RELEASE_TAG" "$ARCHIVE_NAME" SHA256SUMS.txt \
+              gh release upload "$RELEASE_TAG" "$ARCHIVE_NAME" "$DMG_NAME" SHA256SUMS.txt \
                 --repo "$GITHUB_REPOSITORY" --clobber
               ;;
             404)
-              gh release create "$RELEASE_TAG" "$ARCHIVE_NAME" SHA256SUMS.txt \
+              gh release create "$RELEASE_TAG" "$ARCHIVE_NAME" "$DMG_NAME" SHA256SUMS.txt \
                 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
                 --title "Paola Gestionale $RELEASE_VERSION (build $GITHUB_RUN_NUMBER)" \
                 --notes-file RELEASE_NOTES.txt

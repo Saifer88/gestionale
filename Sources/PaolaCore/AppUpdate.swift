@@ -35,14 +35,22 @@ public struct AppVersion: Comparable, Equatable, CustomStringConvertible, Sendab
     }
 }
 
+/// Tipo di pacchetto di installazione dell'app.
+public enum InstallerKind: Equatable, Sendable {
+    case diskImage   // .dmg: finestra con app + Applicazioni + freccia
+    case zipArchive  // .zip: solo l'app
+}
+
 /// Un asset scaricabile pubblicato in una release GitHub.
 public struct ReleaseAsset: Equatable, Sendable {
     public let name: String
     public let downloadURL: URL
     public let sizeBytes: Int64
+    public let kind: InstallerKind?
 
-    public init(name: String, downloadURL: URL, sizeBytes: Int64) {
-        self.name = name; self.downloadURL = downloadURL; self.sizeBytes = sizeBytes
+    public init(name: String, downloadURL: URL, sizeBytes: Int64, kind: InstallerKind? = nil) {
+        self.name = name; self.downloadURL = downloadURL
+        self.sizeBytes = sizeBytes; self.kind = kind
     }
 }
 
@@ -53,6 +61,9 @@ public struct ReleaseInfo: Equatable, Sendable {
     public let notes: String
     public let appArchive: ReleaseAsset
     public let checksums: ReleaseAsset?
+
+    /// Tipo dell'installer selezionato (DMG preferito, altrimenti ZIP).
+    public var installerKind: InstallerKind { appArchive.kind ?? .zipArchive }
 
     public init(tag: String, version: AppVersion, notes: String,
                 appArchive: ReleaseAsset, checksums: ReleaseAsset?) {
@@ -109,10 +120,18 @@ public struct GitHubRepository: Sendable, Equatable {
 
 /// Analisi pura (senza rete) delle risposte GitHub, così da poterla testare.
 public enum GitHubReleaseParser {
-    /// Riconosce l'archivio universale dell'app tra gli asset della release.
-    public static func isAppArchive(_ name: String) -> Bool {
+    /// Riconosce il tipo di installer dell'app dagli asset della release, se compatibile.
+    public static func installerKind(for name: String) -> InstallerKind? {
         let lower = name.lowercased()
-        return lower.hasSuffix(".zip") && lower.contains("paolagestionale") && lower.contains("macos")
+        guard lower.contains("paolagestionale"), lower.contains("macos") else { return nil }
+        if lower.hasSuffix(".dmg") { return .diskImage }
+        if lower.hasSuffix(".zip") { return .zipArchive }
+        return nil
+    }
+
+    /// Riconosce un archivio dell'app compatibile (DMG o ZIP).
+    public static func isAppArchive(_ name: String) -> Bool {
+        installerKind(for: name) != nil
     }
 
     /// Costruisce `ReleaseInfo` dal JSON di `/releases/latest`.
@@ -133,10 +152,13 @@ public enum GitHubReleaseParser {
                   let urlString = entry["browser_download_url"] as? String,
                   let url = URL(string: urlString) else { return nil }
             let size = (entry["size"] as? NSNumber)?.int64Value ?? 0
-            return ReleaseAsset(name: name, downloadURL: url, sizeBytes: size)
+            return ReleaseAsset(name: name, downloadURL: url, sizeBytes: size,
+                                kind: installerKind(for: name))
         }
 
-        guard let appArchive = assets.first(where: { isAppArchive($0.name) }) else {
+        // Preferisci il DMG (esperienza di installazione guidata), altrimenti lo ZIP.
+        guard let appArchive = assets.first(where: { $0.kind == .diskImage })
+                ?? assets.first(where: { $0.kind == .zipArchive }) else {
             throw UpdateError.noCompatibleAsset
         }
         let checksums = assets.first { $0.name.uppercased() == "SHA256SUMS.TXT" }

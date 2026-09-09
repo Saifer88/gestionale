@@ -83,6 +83,34 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertEqual(release.version, AppVersion(major: 0, minor: 6, patch: 42))
     }
 
+    func testInstallerKindRecognizesDmgAndZipOnly() {
+        XCTAssertEqual(GitHubReleaseParser.installerKind(for: "PaolaGestionale-macOS-universal-v0.6.42-build.42.dmg"), .diskImage)
+        XCTAssertEqual(GitHubReleaseParser.installerKind(for: "PaolaGestionale-macOS-universal-v0.6.42-build.42.zip"), .zipArchive)
+        XCTAssertNil(GitHubReleaseParser.installerKind(for: "SHA256SUMS.txt"))
+        XCTAssertNil(GitHubReleaseParser.installerKind(for: "qualcosa-macos.tar.gz"))
+    }
+
+    func testParseLatestReleasePrefersDmgOverZip() throws {
+        let json = Data("""
+        {"tag_name":"v0.6.42-build.42","draft":false,"body":"note","assets":[
+          {"name":"PaolaGestionale-macOS-universal-v0.6.42-build.42.zip",
+           "browser_download_url":"https://example.com/app.zip","size":10},
+          {"name":"PaolaGestionale-macOS-universal-v0.6.42-build.42.dmg",
+           "browser_download_url":"https://example.com/app.dmg","size":20},
+          {"name":"SHA256SUMS.txt","browser_download_url":"https://example.com/SHA256SUMS.txt","size":80}
+        ]}
+        """.utf8)
+        let release = try GitHubReleaseParser.parseLatestRelease(json)
+        XCTAssertEqual(release.installerKind, .diskImage)
+        XCTAssertEqual(release.appArchive.downloadURL.absoluteString, "https://example.com/app.dmg")
+    }
+
+    func testParseLatestReleaseFallsBackToZipWhenNoDmg() throws {
+        let release = try GitHubReleaseParser.parseLatestRelease(releaseJSON(tag: "v0.6.42"))
+        XCTAssertEqual(release.installerKind, .zipArchive)
+        XCTAssertTrue(release.appArchive.name.hasSuffix(".zip"))
+    }
+
     func testParseLatestReleaseWithoutChecksumsStillParses() throws {
         let release = try GitHubReleaseParser.parseLatestRelease(releaseJSON(tag: "v0.7.0", includeChecksums: false))
         XCTAssertNil(release.checksums)

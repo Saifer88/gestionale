@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sfondo per la finestra del DMG di installazione.
+  Freccia che invita a trascinare l'app nella cartella Applicazioni.
+  Dimensioni finestra: 640x400. Le icone vengono posizionate dallo script make-dmg.sh:
+  app a sinistra (160,200), Applicazioni a destra (480,200).
+  Rigenerare il PNG con scripts/make-dmg.sh.
+-->
+<svg width="640" height="400" viewBox="0 0 640 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F2FAF8"/>
+      <stop offset="1" stop-color="#DCEFEB"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="640" height="400" fill="url(#bg)"/>
+
+  <!-- Istruzione -->
+  <text x="320" y="70" text-anchor="middle"
+        font-family="-apple-system, Helvetica, Arial, sans-serif"
+        font-size="26" font-weight="600" fill="#137066">
+    Installa Paola Gestionale
+  </text>
+  <text x="320" y="104" text-anchor="middle"
+        font-family="-apple-system, Helvetica, Arial, sans-serif"
+        font-size="16" fill="#3A6A64">
+    Trascina l'app nella cartella Applicazioni
+  </text>
+
+  <!-- Freccia centrale dall'app verso Applicazioni -->
+  <g fill="none" stroke="#2FB6A8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="250" y1="200" x2="384" y2="200"/>
+    <polyline points="360,172 392,200 360,228"/>
+  </g>
+</svg>

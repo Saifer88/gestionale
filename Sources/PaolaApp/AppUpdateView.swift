@@ -22,7 +22,7 @@ struct AppUpdateSection: View {
         } header: {
             Text("Aggiornamenti")
         } footer: {
-            Text("Il controllo interroga le release pubblicate su GitHub. L'aggiornamento è assistito: l'app scarica e verifica il nuovo pacchetto, poi apri il Finder per sostituire manualmente “Paola Gestionale.app”. La build è firmata solo ad hoc, quindi macOS potrebbe chiedere conferma all'apertura.")
+            Text("Il controllo interroga le release pubblicate su GitHub. Se c'è una nuova versione, l'app la scarica, ne verifica l'integrità, apre la finestra di installazione (trascina l'app nella cartella Applicazioni) e si chiude automaticamente. La build è firmata solo ad hoc, quindi macOS potrebbe chiedere conferma alla prima apertura.")
         }
         // Conferma prima di scaricare la nuova versione.
         .alert("Aggiornamento disponibile",
@@ -39,20 +39,7 @@ struct AppUpdateSection: View {
                 Text("È disponibile la versione \(release.version.description) (attuale \(updater.currentVersionText)). Vuoi scaricarla e prepararla per l'installazione?")
             }
         }
-        // Istruzioni finali quando il pacchetto è pronto nel Finder.
-        .alert("Pacchetto pronto",
-               isPresented: Binding(get: { isReady },
-                                    set: { if !$0 { updater.reset() } })) {
-            Button("OK", role: .cancel) { updater.reset() }
-        } message: {
-            Text("La nuova versione è stata scaricata e verificata. Nel Finder appena aperto, chiudi questa app e trascina “Paola Gestionale.app” in Applicazioni sostituendo quella esistente, poi riaprila.")
-        }
         .onAppear { updater.prepareInitialState() }
-    }
-
-    private var isReady: Bool {
-        if case .ready = updater.phase { return true }
-        return false
     }
 
     @ViewBuilder
@@ -75,7 +62,7 @@ struct AppUpdateSection: View {
             Label("Build locale di sviluppo: il controllo aggiornamenti è disattivato.", systemImage: "hammer")
                 .font(.caption).foregroundStyle(.secondary)
         case .ready:
-            Label("Pacchetto pronto nel Finder.", systemImage: "shippingbox")
+            Label("Installazione aperta. L'app si chiude per completare l'aggiornamento.", systemImage: "shippingbox")
                 .font(.caption).foregroundStyle(.secondary)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle")

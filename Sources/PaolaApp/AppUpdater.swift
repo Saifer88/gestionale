@@ -97,8 +97,9 @@ final class AppUpdater: ObservableObject {
         }
     }
 
-    /// Scarica lo ZIP della release, verifica lo SHA-256 (se disponibile) e lo espande.
-    /// Al termine apre il Finder sul nuovo bundle e passa a `.ready`.
+    /// Scarica l'installer della release, verifica lo SHA-256 (se disponibile) e lo prepara.
+    /// Per un DMG: monta l'immagine, apre la finestra del volume (app + Applicazioni + freccia)
+    /// e poi chiude l'app così l'utente può trascinarla subito. Per uno ZIP: espande e apre il Finder.
     func downloadAndPrepare(_ release: ReleaseInfo) async {
         availableRelease = nil
         phase = .downloading(progress: 0)
@@ -115,11 +116,28 @@ final class AppUpdater: ObservableObject {
                 guard actual == expected else { throw UpdateError.checksumMismatch }
             }
 
-            let bundleURL = try expand(archiveData: archiveData, tag: release.tag)
-            NSWorkspace.shared.activateFileViewerSelecting([bundleURL])
-            phase = .ready(bundleURL)
+            switch release.installerKind {
+            case .diskImage:
+                let mountPoint = try mountDiskImage(data: archiveData, tag: release.tag)
+                // Apre la finestra del volume montato (mostra app + Applicazioni + freccia).
+                NSWorkspace.shared.open(mountPoint)
+                phase = .ready(mountPoint)
+                // Chiude l'app poco dopo, così la finestra del DMG è già in primo piano.
+                scheduleQuit()
+            case .zipArchive:
+                let bundleURL = try expand(archiveData: archiveData, tag: release.tag)
+                NSWorkspace.shared.activateFileViewerSelecting([bundleURL])
+                phase = .ready(bundleURL)
+            }
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Termina l'app dopo un breve ritardo, lasciando in primo piano la finestra del DMG.
+    private func scheduleQuit() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            NSApp.terminate(nil)
         }
     }
 
@@ -142,11 +160,31 @@ final class AppUpdater: ObservableObject {
         return data
     }
 
-    // MARK: - Estrazione
+    // MARK: - DMG
 
-    /// Scrive lo ZIP in una cartella dedicata in Application Support e lo espande con `ditto`.
-    /// Ritorna l'URL del `.app` estratto.
-    private func expand(archiveData: Data, tag: String) throws -> URL {
+    /// Scrive il DMG in Application Support e lo monta con `hdiutil`. Ritorna il mount point.
+    private func mountDiskImage(data: Data, tag: String) throws -> URL {
+        let fileManager = FileManager.default
+        let base = try updatesDirectory(tag: tag)
+        let dmgURL = base.appendingPathComponent("PaolaGestionale-\(sanitize(tag)).dmg")
+        try data.write(to: dmgURL, options: .atomic)
+
+        let mountPoint = base.appendingPathComponent("mount", isDirectory: true)
+        if fileManager.fileExists(atPath: mountPoint.path) {
+            try? fileManager.removeItem(at: mountPoint)
+        }
+        try fileManager.createDirectory(at: mountPoint, withIntermediateDirectories: true)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        process.arguments = ["attach", dmgURL.path, "-mountpoint", mountPoint.path, "-nobrowse"]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw UpdateError.invalidResponse }
+        return mountPoint
+    }
+
+    private func updatesDirectory(tag: String) throws -> URL {
         let fileManager = FileManager.default
         let base = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                        appropriateFor: nil, create: true)
@@ -155,7 +193,16 @@ final class AppUpdater: ObservableObject {
             try fileManager.removeItem(at: base)
         }
         try fileManager.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
 
+    // MARK: - Estrazione (ZIP, fallback)
+
+    /// Scrive lo ZIP in una cartella dedicata in Application Support e lo espande con `ditto`.
+    /// Ritorna l'URL del `.app` estratto.
+    private func expand(archiveData: Data, tag: String) throws -> URL {
+        let fileManager = FileManager.default
+        let base = try updatesDirectory(tag: tag)
         let zipURL = base.appendingPathComponent("update.zip")
         try archiveData.write(to: zipURL, options: .atomic)
 
