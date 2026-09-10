@@ -59,6 +59,15 @@ struct ClientDetailView: View {
             }
             .textSelection(.enabled)
 
+            Section("Dati di fatturazione") {
+                LabeledContent("Codice fiscale", value: client.taxCode.isEmpty ? "Non inserito" : client.taxCode)
+                LabeledContent("Indirizzo") {
+                    Text(client.billingAddress.isEmpty ? "Non inserito" : client.billingAddress)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            .textSelection(.enabled)
+
             Section("Preferenze appuntamenti") {
                 if let error = _services.fetchError ?? _rates.fetchError {
                     Label(error.localizedDescription, systemImage: "exclamationmark.triangle")

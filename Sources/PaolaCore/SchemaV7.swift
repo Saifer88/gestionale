@@ -1,14 +1,15 @@
 import Foundation
 import SwiftData
 
-public enum PaolaSchemaV3: VersionedSchema {
-    public static var versionIdentifier: Schema.Version { Schema.Version(3, 0, 0) }
-
+/// Schema V7: aggiunge al cliente il codice fiscale e l'indirizzo di fatturazione
+/// (taxCode, billingAddress; default stringa vuota). Migrazione lightweight da V6.
+public enum PaolaSchemaV7: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(7, 0, 0) }
     public static var models: [any PersistentModel.Type] {
         [
             Client.self, TrainingService.self, ServiceRate.self, TrainingSession.self,
-            PaolaSchemaV5.SessionParticipant.self, PaolaSchemaV5.LessonPackage.self, PackageUse.self,
-            LedgerEntry.self, Unavailability.self
+            SessionParticipant.self, LessonPackage.self, PackageUse.self, LedgerEntry.self,
+            Unavailability.self, ClientAppointmentPreference.self
         ]
     }
 
@@ -19,9 +20,13 @@ public enum PaolaSchemaV3: VersionedSchema {
         public var lastName: String = ""
         public var phone: String = ""
         public var email: String = ""
+        public var taxCode: String = ""
+        public var billingAddress: String = ""
         public var notes: String = ""
         public var anamnesis: String = ""
         public var physicalAnalysis: String = ""
+        public var preferredServiceID: UUID?
+        public var preferredRateID: UUID?
         public var joinedOn: Date = Date()
         public var createdAt: Date = Date()
         public var updatedAt: Date = Date()
@@ -33,19 +38,25 @@ public enum PaolaSchemaV3: VersionedSchema {
             lastName: String = "",
             phone: String = "",
             email: String = "",
+            taxCode: String = "",
+            billingAddress: String = "",
             notes: String = "",
             anamnesis: String = "",
             physicalAnalysis: String = "",
             joinedOn: Date = Date(),
             createdAt: Date = Date(),
             updatedAt: Date? = nil,
-            isArchived: Bool = false
+            isArchived: Bool = false,
+            preferredServiceID: UUID? = nil,
+            preferredRateID: UUID? = nil
         ) {
             self.id = id
             self.firstName = firstName
             self.lastName = lastName
             self.phone = phone
             self.email = email
+            self.taxCode = taxCode
+            self.billingAddress = billingAddress
             self.notes = notes
             self.anamnesis = anamnesis
             self.physicalAnalysis = physicalAnalysis
@@ -53,6 +64,8 @@ public enum PaolaSchemaV3: VersionedSchema {
             self.createdAt = createdAt
             self.updatedAt = updatedAt ?? createdAt
             self.isArchived = isArchived
+            self.preferredServiceID = preferredServiceID
+            self.preferredRateID = preferredRateID
         }
 
         public var fullName: String {

@@ -14,6 +14,8 @@ public struct ArchiveSnapshot: Codable {
         public var lastName: String
         public var phone: String
         public var email: String
+        public var taxCode: String
+        public var billingAddress: String
         public var notes: String
         public var anamnesis: String
         public var physicalAnalysis: String
@@ -30,6 +32,8 @@ public struct ArchiveSnapshot: Codable {
             lastName = client.lastName
             phone = client.phone
             email = client.email
+            taxCode = client.taxCode
+            billingAddress = client.billingAddress
             notes = client.notes
             anamnesis = client.anamnesis
             physicalAnalysis = client.physicalAnalysis
@@ -42,7 +46,7 @@ public struct ArchiveSnapshot: Codable {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case id, firstName, lastName, phone, email, notes, anamnesis, physicalAnalysis
+            case id, firstName, lastName, phone, email, taxCode, billingAddress, notes, anamnesis, physicalAnalysis
             case joinedOn, createdAt, updatedAt, isArchived
             case preferredServiceID, preferredRateID
         }
@@ -54,6 +58,8 @@ public struct ArchiveSnapshot: Codable {
             lastName = try values.decode(String.self, forKey: .lastName)
             phone = try values.decode(String.self, forKey: .phone)
             email = try values.decode(String.self, forKey: .email)
+            taxCode = try values.decodeIfPresent(String.self, forKey: .taxCode) ?? ""
+            billingAddress = try values.decodeIfPresent(String.self, forKey: .billingAddress) ?? ""
             notes = try values.decode(String.self, forKey: .notes)
             anamnesis = try values.decodeIfPresent(String.self, forKey: .anamnesis) ?? ""
             physicalAnalysis = try values.decodeIfPresent(String.self, forKey: .physicalAnalysis) ?? ""
@@ -67,7 +73,8 @@ public struct ArchiveSnapshot: Codable {
 
         func model() -> Client {
             let client = Client(id: id, firstName: firstName, lastName: lastName, phone: phone,
-                                email: email, notes: notes, anamnesis: anamnesis,
+                                email: email, taxCode: taxCode, billingAddress: billingAddress,
+                                notes: notes, anamnesis: anamnesis,
                                 physicalAnalysis: physicalAnalysis, joinedOn: joinedOn,
                                 createdAt: createdAt, updatedAt: updatedAt, isArchived: isArchived,
                                 preferredServiceID: preferredServiceID, preferredRateID: preferredRateID)

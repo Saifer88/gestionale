@@ -29,16 +29,20 @@ public enum LedgerKind: String, CaseIterable, Identifiable, Codable {
 }
 
 public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
-    case cash, bankTransfer, card, other
+    case cash, stripe, card, bankTransfer, other
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .cash: return "Contanti"
-        case .bankTransfer: return "Bonifico"
+        case .stripe: return "Stripe"
         case .card: return "Carta"
+        case .bankTransfer: return "Bonifico"
         case .other: return "Altro"
         }
     }
+    /// Metodi selezionabili dall'utente per gli incassi (contanti, Stripe, carta, bonifico).
+    /// "Altro" resta solo per i movimenti storici senza metodo indicato.
+    public static var selectable: [PaymentMethod] { [.cash, .stripe, .card, .bankTransfer] }
 }
 
 @Model public final class TrainingService {
@@ -92,11 +96,19 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
     public var clientName: String = ""
     public var priceCents: Int64 = 0
     public var packageID: UUID?
+    public var paymentMethodRaw: String = "cash"
+
+    public var paymentMethod: PaymentMethod {
+        get { PaymentMethod(rawValue: paymentMethodRaw) ?? .cash }
+        set { paymentMethodRaw = newValue.rawValue }
+    }
 
     public init(id: UUID = UUID(), sessionID: UUID = UUID(), clientID: UUID = UUID(),
-                clientName: String = "", priceCents: Int64 = 0, packageID: UUID? = nil) {
+                clientName: String = "", priceCents: Int64 = 0, packageID: UUID? = nil,
+                paymentMethod: PaymentMethod = .cash) {
         self.id = id; self.sessionID = sessionID; self.clientID = clientID
         self.clientName = clientName; self.priceCents = priceCents; self.packageID = packageID
+        self.paymentMethodRaw = paymentMethod.rawValue
     }
 }
 
@@ -109,13 +121,20 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
     public var capacity: Int = 10
     public var expiresOn: Date?
     public var notes: String = ""
+    public var paymentMethodRaw: String = "cash"
+
+    public var paymentMethod: PaymentMethod {
+        get { PaymentMethod(rawValue: paymentMethodRaw) ?? .cash }
+        set { paymentMethodRaw = newValue.rawValue }
+    }
 
     public init(id: UUID = UUID(), clientID: UUID = UUID(), clientName: String = "",
                 purchasedOn: Date = Date(), priceCents: Int64 = 0, capacity: Int = 10,
-                expiresOn: Date? = nil, notes: String = "") {
+                expiresOn: Date? = nil, notes: String = "", paymentMethod: PaymentMethod = .cash) {
         self.id = id; self.clientID = clientID; self.clientName = clientName
         self.purchasedOn = purchasedOn; self.priceCents = priceCents; self.capacity = capacity
         self.expiresOn = expiresOn; self.notes = notes
+        self.paymentMethodRaw = paymentMethod.rawValue
     }
 }
 
@@ -201,9 +220,11 @@ public struct ParticipantDraft {
     public var priceCents: Int64
     public var packageID: UUID?
     public var tariffID: UUID? = nil
-    public init(clientID: UUID, priceCents: Int64, packageID: UUID? = nil, tariffID: UUID? = nil) {
+    public var paymentMethod: PaymentMethod = .cash
+    public init(clientID: UUID, priceCents: Int64, packageID: UUID? = nil, tariffID: UUID? = nil,
+                paymentMethod: PaymentMethod = .cash) {
         self.clientID = clientID; self.priceCents = priceCents; self.packageID = packageID
-        self.tariffID = tariffID
+        self.tariffID = tariffID; self.paymentMethod = paymentMethod
     }
 }
 
@@ -222,7 +243,8 @@ public struct SessionDraft {
         serviceID = model.serviceID; serviceName = model.serviceName
         location = model.location; notes = model.notes
         self.participants = participants.filter { $0.sessionID == model.id }.map {
-            ParticipantDraft(clientID: $0.clientID, priceCents: $0.priceCents, packageID: $0.packageID)
+            ParticipantDraft(clientID: $0.clientID, priceCents: $0.priceCents, packageID: $0.packageID,
+                             paymentMethod: $0.paymentMethod)
         }
     }
 }
@@ -235,11 +257,13 @@ public struct PackageDraft {
     public var capacity = 10
     public var expiresOn: Date?
     public var notes = ""
+    public var paymentMethod: PaymentMethod = .cash
     public init() {}
     public init(_ model: LessonPackage) {
         id = model.id; clientID = model.clientID; purchasedOn = model.purchasedOn
         priceCents = model.priceCents; capacity = model.capacity
         expiresOn = model.expiresOn; notes = model.notes
+        paymentMethod = model.paymentMethod
     }
 }
 

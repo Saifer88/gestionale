@@ -104,6 +104,7 @@ struct PackageEditor: View {
     @State private var hasExpiry = false
     @State private var expiry = Date()
     @State private var notes = ""
+    @State private var paymentMethod: PaymentMethod = .cash
     @State private var operation = BusinessOperation()
     @State private var confirmingIncome = false
     @State private var confirmingDelete = false
@@ -128,6 +129,7 @@ struct PackageEditor: View {
         _hasExpiry = State(initialValue: package.expiresOn != nil)
         _expiry = State(initialValue: package.expiresOn ?? Date())
         _notes = State(initialValue: package.notes)
+        _paymentMethod = State(initialValue: package.paymentMethod)
     }
 
     var body: some View {
@@ -166,6 +168,12 @@ struct PackageEditor: View {
                             }
                             MoneyField(title: "Prezzo totale del pacchetto (€)", text: $price)
                                 .accessibilityIdentifier("package.price")
+                            Picker("Modalità di pagamento", selection: $paymentMethod) {
+                                ForEach(PaymentMethod.selectable) { method in
+                                    Text(method.title).tag(method)
+                                }
+                            }
+                            .accessibilityIdentifier("package.paymentMethod")
                             DatePicker("Data di acquisto", selection: $purchasedOn, displayedComponents: .date)
                                 .accessibilityIdentifier("package.purchasedOn")
                             Toggle("Prevede una scadenza", isOn: $hasExpiry)
@@ -267,6 +275,7 @@ struct PackageEditor: View {
             draft.purchasedOn = Calendar.current.startOfDay(for: purchasedOn)
             draft.expiresOn = hasExpiry ? Calendar.current.startOfDay(for: expiry) : nil
             draft.notes = notes
+            draft.paymentMethod = paymentMethod
             _ = try BusinessRepository(context: context).savePackage(draft)
             dismiss()
         } catch { operation.capture(error) }

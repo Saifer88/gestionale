@@ -80,7 +80,10 @@ public enum BusinessReports {
                 let sessionIncome = parts.count == 4 && parts[1] == "session"
                     && UUID(uuidString: String(parts[2])) != nil && UUID(uuidString: String(parts[3])) == entry.clientID
                 let chargeSource = parts.dropFirst(2).joined(separator: ":")
-                if !(packageIncome || sessionIncome) || entry.kind != .payment || entry.method != .other {
+                // Il metodo di pagamento è ora selezionabile (contanti/Stripe/carta/bonifico):
+                // non è più vincolato a "Altro". Restano validati origine e tipo.
+                if !(packageIncome || sessionIncome) || entry.kind != .payment
+                    || PaymentMethod(rawValue: entry.methodRaw) == nil {
                     warn("Un incasso automatico ha origine o metodo non validi.")
                 }
                 if let charge = entrySources[chargeSource] {

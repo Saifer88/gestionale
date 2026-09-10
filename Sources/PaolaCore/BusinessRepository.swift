@@ -143,7 +143,8 @@ public final class BusinessRepository {
                     try checkPackage(package, clientID: client.id, date: draft.startDate, in: writer)
                 }
                 participants.append(SessionParticipant(sessionID: session.id, clientID: client.id,
-                    clientName: client.fullName, priceCents: draftParticipant.priceCents, packageID: draftParticipant.packageID))
+                    clientName: client.fullName, priceCents: draftParticipant.priceCents,
+                    packageID: draftParticipant.packageID, paymentMethod: draftParticipant.paymentMethod))
             }
             for previous in previousParticipants where previous.sessionID == session.id {
                 writer.delete(previous)
@@ -201,7 +202,7 @@ public final class BusinessRepository {
                         if participant.priceCents > 0 {
                             writer.insert(LedgerEntry(clientID: participant.clientID, clientName: participant.clientName,
                                 date: completionDate, kind: .payment, amountCents: participant.priceCents,
-                                method: .other, notes: session.serviceName,
+                                method: participant.paymentMethod, notes: session.serviceName,
                                 sourceKey: BusinessRules.sessionIncomeSource(sessionID: id, clientID: participant.clientID)))
                         }
                     }
@@ -238,8 +239,9 @@ public final class BusinessRepository {
                 package.capacity = draft.capacity
                 package.expiresOn = draft.expiresOn
                 package.notes = notes
+                package.paymentMethod = draft.paymentMethod
 
-                // Allinea i movimenti economici collegati (addebito e incasso) a prezzo/data.
+                // Allinea i movimenti economici collegati (addebito e incasso) a prezzo/data/metodo.
                 let entries = try writer.fetch(FetchDescriptor<LedgerEntry>())
                 let chargeSource = BusinessRules.packageSource(package.id)
                 let incomeSource = BusinessRules.packageIncomeSource(package.id)
@@ -252,6 +254,7 @@ public final class BusinessRepository {
                     } else if key == incomeSource.lowercased() {
                         entry.date = draft.purchasedOn
                         entry.amountCents = draft.priceCents
+                        entry.method = draft.paymentMethod
                         entry.notes = "Pacchetto \(draft.capacity) lezioni"
                     }
                 }
@@ -261,14 +264,14 @@ public final class BusinessRepository {
             let client = try client(draft.clientID, in: writer, requireActive: true)
             let package = LessonPackage(clientID: client.id, clientName: client.fullName,
                 purchasedOn: draft.purchasedOn, priceCents: draft.priceCents, capacity: draft.capacity,
-                expiresOn: draft.expiresOn, notes: notes)
+                expiresOn: draft.expiresOn, notes: notes, paymentMethod: draft.paymentMethod)
             writer.insert(package)
             writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
                 kind: .charge, amountCents: draft.priceCents, notes: "Pacchetto \(draft.capacity) lezioni",
                 sourceKey: BusinessRules.packageSource(package.id)))
             if draft.priceCents > 0 {
                 writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
-                    kind: .payment, amountCents: draft.priceCents, method: .other,
+                    kind: .payment, amountCents: draft.priceCents, method: draft.paymentMethod,
                     notes: "Pacchetto \(draft.capacity) lezioni",
                     sourceKey: BusinessRules.packageIncomeSource(package.id)))
             }

@@ -7,7 +7,6 @@ struct ClientBusinessSection: View {
     @Query private var entries: [LedgerEntry]
     @Query private var packages: [LessonPackage]
     @Query private var uses: [PackageUse]
-    @State private var creatingSession = false
 
     private var clientPackages: [LessonPackage] { packages.filter { $0.clientID == client.id } }
     private var availableLessons: Int {
@@ -42,9 +41,6 @@ struct ClientBusinessSection: View {
                 } label: {
                     Label("Estratto conto ed esportazione", systemImage: "doc.text")
                 }
-                if !client.isArchived {
-                    Button("Nuovo appuntamento", systemImage: "calendar.badge.plus") { creatingSession = true }
-                }
             }
         } header: {
             Text("Lezioni e conto cliente")
@@ -53,6 +49,5 @@ struct ClientBusinessSection: View {
                  ? "Il cliente è archiviato: appuntamenti, pacchetti e movimenti restano consultabili. Sono disponibili le rettifiche."
                  : "Gli incassi si registrano con i pacchetti e al completamento delle lezioni senza pacchetto.")
         }
-        .sheet(isPresented: $creatingSession) { SessionEditor(clientID: client.id) }
     }
 }

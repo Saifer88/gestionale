@@ -20,6 +20,7 @@ struct SessionEditor: View {
     @State private var packageID: UUID?
     @State private var price = "0,00"
     @State private var rateID: UUID?
+    @State private var paymentMethod: PaymentMethod = .cash
     @State private var additionalPeople: [AdditionalParticipantDraft] = []
     @State private var loaded = false
     @State private var confirmingOverlap = false
@@ -240,6 +241,14 @@ struct SessionEditor: View {
             }
             MoneyField(title: "Prezzo concordato (€)", text: $price)
                 .disabled(packageID != nil).accessibilityIdentifier("session.price1")
+            if packageID == nil {
+                Picker("Modalità di pagamento", selection: $paymentMethod) {
+                    ForEach(PaymentMethod.selectable) { method in
+                        Text(method.title).tag(method)
+                    }
+                }
+                .accessibilityIdentifier("session.paymentMethod")
+            }
             Text(packageID == nil
                  ? "L'incasso viene registrato automaticamente quando segni la lezione come completata."
                  : "Il completamento scala una lezione. Il pacchetto è già stato conteggiato alla registrazione, senza un secondo incasso.")
@@ -260,6 +269,7 @@ struct SessionEditor: View {
         guard !loaded, readError == nil else { return }
         if let person = originalParticipants.first {
             clientID = person.clientID
+            paymentMethod = person.paymentMethod
             price = BusinessFormatting.editableMoney(person.priceCents)
             packageID = person.packageID
             rateID = tariffOptions.first { $0.priceCents == person.priceCents }?.id
@@ -377,7 +387,8 @@ struct SessionEditor: View {
             }
             if session?.serviceID != serviceID || session == nil { draft.serviceName = service.name }
             draft.participants = [ParticipantDraft(
-                clientID: clientID, priceCents: try Money.parse(price), packageID: packageID, tariffID: rateID
+                clientID: clientID, priceCents: try Money.parse(price), packageID: packageID, tariffID: rateID,
+                paymentMethod: paymentMethod
             )]
             for person in additionalPeople {
                 guard let participantID = person.clientID else {
@@ -385,7 +396,8 @@ struct SessionEditor: View {
                 }
                 draft.participants.append(ParticipantDraft(
                     clientID: participantID, priceCents: try Money.parse(person.price),
-                    packageID: person.packageID, tariffID: person.rateID
+                    packageID: person.packageID, tariffID: person.rateID,
+                    paymentMethod: paymentMethod
                 ))
             }
             _ = try BusinessRepository(context: context).saveSession(draft, allowOverlap: allowOverlap)

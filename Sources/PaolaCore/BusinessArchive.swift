@@ -221,7 +221,7 @@ public struct BusinessArchive: Codable, Equatable {
             if let income = sources[incomeSource] {
                 try require(income.kindRaw == "payment" && income.clientID == package.clientID
                     && income.amountCents == package.priceCents && income.date == package.purchasedOn
-                    && income.methodRaw == PaymentMethod.other.rawValue,
+                    && PaymentMethod(rawValue: income.methodRaw) != nil,
                     "Incasso pacchetto incoerente.")
             }
         }
@@ -245,7 +245,7 @@ public struct BusinessArchive: Codable, Equatable {
                         if let income = sources[incomeSource] {
                             try require(income.kindRaw == "payment" && income.clientID == participant.clientID
                                 && income.amountCents == participant.priceCents
-                                && income.methodRaw == PaymentMethod.other.rawValue,
+                                && PaymentMethod(rawValue: income.methodRaw) != nil,
                                 "Incasso lezione incoerente.")
                         }
                     }
@@ -403,13 +403,26 @@ public struct BusinessArchive: Codable, Equatable {
         public var clientName: String
         public var priceCents: Int64
         public var packageID: UUID?
+        public var paymentMethodRaw: String
         public init(_ value: SessionParticipant) {
             id = value.id; sessionID = value.sessionID; clientID = value.clientID
             clientName = value.clientName; priceCents = value.priceCents; packageID = value.packageID
+            paymentMethodRaw = value.paymentMethodRaw
+        }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            sessionID = try c.decode(UUID.self, forKey: .sessionID)
+            clientID = try c.decode(UUID.self, forKey: .clientID)
+            clientName = try c.decode(String.self, forKey: .clientName)
+            priceCents = try c.decode(Int64.self, forKey: .priceCents)
+            packageID = try c.decodeIfPresent(UUID.self, forKey: .packageID)
+            paymentMethodRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethodRaw) ?? "cash"
         }
         internal func model() -> SessionParticipant {
             SessionParticipant(id: id, sessionID: sessionID, clientID: clientID,
-                clientName: clientName, priceCents: priceCents, packageID: packageID)
+                clientName: clientName, priceCents: priceCents, packageID: packageID,
+                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash)
         }
     }
     public struct PackageRecord: Codable, Equatable {
@@ -421,14 +434,29 @@ public struct BusinessArchive: Codable, Equatable {
         public var capacity: Int
         public var expiresOn: Date?
         public var notes: String
+        public var paymentMethodRaw: String
         public init(_ value: LessonPackage) {
             id = value.id; clientID = value.clientID; clientName = value.clientName
             purchasedOn = value.purchasedOn; priceCents = value.priceCents; capacity = value.capacity
             expiresOn = value.expiresOn; notes = value.notes
+            paymentMethodRaw = value.paymentMethodRaw
+        }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            clientID = try c.decode(UUID.self, forKey: .clientID)
+            clientName = try c.decode(String.self, forKey: .clientName)
+            purchasedOn = try c.decode(Date.self, forKey: .purchasedOn)
+            priceCents = try c.decode(Int64.self, forKey: .priceCents)
+            capacity = try c.decode(Int.self, forKey: .capacity)
+            expiresOn = try c.decodeIfPresent(Date.self, forKey: .expiresOn)
+            notes = try c.decode(String.self, forKey: .notes)
+            paymentMethodRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethodRaw) ?? "cash"
         }
         internal func model() -> LessonPackage {
             LessonPackage(id: id, clientID: clientID, clientName: clientName, purchasedOn: purchasedOn,
-                priceCents: priceCents, capacity: capacity, expiresOn: expiresOn, notes: notes)
+                priceCents: priceCents, capacity: capacity, expiresOn: expiresOn, notes: notes,
+                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash)
         }
     }
     public struct PackageUseRecord: Codable, Equatable {

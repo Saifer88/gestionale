@@ -31,6 +31,8 @@ public struct ClientDraft {
     public var lastName: String = ""
     public var phone: String = ""
     public var email: String = ""
+    public var taxCode: String = ""
+    public var billingAddress: String = ""
     public var notes: String = ""
     public var anamnesis: String = ""
     public var physicalAnalysis: String = ""
@@ -48,6 +50,8 @@ public struct ClientDraft {
         lastName = client.lastName
         phone = client.phone
         email = client.email
+        taxCode = client.taxCode
+        billingAddress = client.billingAddress
         notes = client.notes
         anamnesis = client.anamnesis
         physicalAnalysis = client.physicalAnalysis
@@ -64,6 +68,8 @@ public struct ClientDraft {
         result.lastName = TextNormalization.spaces(lastName)
         result.phone = TextNormalization.spaces(phone)
         result.email = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        result.taxCode = taxCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        result.billingAddress = billingAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         result.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         result.anamnesis = anamnesis.trimmingCharacters(in: .whitespacesAndNewlines)
         result.physicalAnalysis = physicalAnalysis.trimmingCharacters(in: .whitespacesAndNewlines)

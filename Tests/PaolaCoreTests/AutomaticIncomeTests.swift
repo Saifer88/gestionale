@@ -22,7 +22,7 @@ final class AutomaticIncomeTests: XCTestCase {
         let income = try XCTUnwrap(entries.first { $0.sourceKey == BusinessRules.packageIncomeSource(id) })
         XCTAssertEqual(charge.kind, .charge)
         XCTAssertEqual(income.kind, .payment)
-        XCTAssertEqual(income.method, .other)
+        XCTAssertEqual(income.method, .cash) // metodo predefinito ora selezionabile (contanti)
         XCTAssertEqual(income.date, draft.purchasedOn)
         XCTAssertEqual(charge.date, draft.purchasedOn)
         XCTAssertEqual(income.amountCents, draft.priceCents)
@@ -216,7 +216,7 @@ final class AutomaticIncomeTests: XCTestCase {
         let mutations: [(inout BusinessArchive) -> Void] = [
             { $0.ledgerEntries[incomeIndex].amountCents += 1 },
             { $0.ledgerEntries[incomeIndex].date = $0.ledgerEntries[incomeIndex].date.addingTimeInterval(1) },
-            { $0.ledgerEntries[incomeIndex].methodRaw = PaymentMethod.cash.rawValue },
+            { $0.ledgerEntries[incomeIndex].methodRaw = "metodo-inesistente" },
             { $0.ledgerEntries[incomeIndex].sourceKey = "income:invalid" },
             { $0.ledgerEntries[incomeIndex].sourceKey = "income:package:\(UUID().uuidString)" },
             { $0.sessions[0].statusRaw = SessionStatus.planned.rawValue }

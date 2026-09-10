@@ -33,32 +33,13 @@ enum AppSection: String, CaseIterable, Identifiable {
 }
 
 extension View {
-    /// Imposta il titolo della schermata mostrando l'icona della sezione prima del nome.
-    /// Mantiene navigationTitle per accessibilità e titolo finestra.
+    /// Imposta il titolo nativo della schermata per la sezione indicata.
     func sectionTitle(_ section: AppSection) -> some View {
-        modifier(SectionTitleModifier(title: section.title, symbol: section.symbol))
+        navigationTitle(section.title)
     }
-    /// Variante per titoli non legati a una sezione (es. dettaglio), con icona esplicita.
-    func sectionTitle(_ title: String, symbol: String) -> some View {
-        modifier(SectionTitleModifier(title: title, symbol: symbol))
-    }
-}
-
-private struct SectionTitleModifier: ViewModifier {
-    let title: String
-    let symbol: String
-
-    func body(content: Content) -> some View {
-        content
-            .navigationTitle(title)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Label(title, systemImage: symbol)
-                        .font(.headline)
-                        .labelStyle(.titleAndIcon)
-                        .accessibilityAddTraits(.isHeader)
-                }
-            }
+    /// Variante per titoli non legati a una sezione (es. dettaglio).
+    func sectionTitle(_ title: String, symbol: String = "") -> some View {
+        navigationTitle(title)
     }
 }
 

@@ -5,10 +5,48 @@ public enum PaolaSchemaV5: VersionedSchema {
     public static var versionIdentifier: Schema.Version { Schema.Version(5, 0, 0) }
     public static var models: [any PersistentModel.Type] {
         [
-            Client.self, TrainingService.self, ServiceRate.self, TrainingSession.self,
+            PaolaSchemaV5.Client.self, TrainingService.self, ServiceRate.self, TrainingSession.self,
             SessionParticipant.self, LessonPackage.self, PackageUse.self, LedgerEntry.self,
             Unavailability.self, ClientAppointmentPreference.self
         ]
+    }
+
+    /// Versione storica del partecipante, senza metodo di pagamento (aggiunto in V6).
+    @Model
+    public final class SessionParticipant {
+        public var id: UUID = UUID()
+        public var sessionID: UUID = UUID()
+        public var clientID: UUID = UUID()
+        public var clientName: String = ""
+        public var priceCents: Int64 = 0
+        public var packageID: UUID?
+
+        public init(id: UUID = UUID(), sessionID: UUID = UUID(), clientID: UUID = UUID(),
+                    clientName: String = "", priceCents: Int64 = 0, packageID: UUID? = nil) {
+            self.id = id; self.sessionID = sessionID; self.clientID = clientID
+            self.clientName = clientName; self.priceCents = priceCents; self.packageID = packageID
+        }
+    }
+
+    /// Versione storica del pacchetto, senza metodo di pagamento (aggiunto in V6).
+    @Model
+    public final class LessonPackage {
+        public var id: UUID = UUID()
+        public var clientID: UUID = UUID()
+        public var clientName: String = ""
+        public var purchasedOn: Date = Date()
+        public var priceCents: Int64 = 0
+        public var capacity: Int = 10
+        public var expiresOn: Date?
+        public var notes: String = ""
+
+        public init(id: UUID = UUID(), clientID: UUID = UUID(), clientName: String = "",
+                    purchasedOn: Date = Date(), priceCents: Int64 = 0, capacity: Int = 10,
+                    expiresOn: Date? = nil, notes: String = "") {
+            self.id = id; self.clientID = clientID; self.clientName = clientName
+            self.purchasedOn = purchasedOn; self.priceCents = priceCents; self.capacity = capacity
+            self.expiresOn = expiresOn; self.notes = notes
+        }
     }
 
     @Model

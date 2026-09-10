@@ -53,6 +53,22 @@ struct ClientEditor: View {
                         #endif
                 }
 
+                Section {
+                    TextField("Codice fiscale", text: $draft.taxCode)
+                        .accessibilityIdentifier("client.taxCode")
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.characters)
+                        #endif
+                    TextField("Indirizzo di fatturazione", text: $draft.billingAddress, axis: .vertical)
+                        .lineLimit(2...4)
+                        .accessibilityIdentifier("client.billingAddress")
+                } header: {
+                    Text("Dati di fatturazione")
+                } footer: {
+                    Text("Facoltativi. Il codice fiscale viene salvato in maiuscolo. Non compaiono negli estratti, che restano documenti non fiscali.")
+                }
+
                 Section("Rapporto professionale") {
                     DatePicker("Cliente dal", selection: $draft.joinedOn, displayedComponents: .date)
                 }

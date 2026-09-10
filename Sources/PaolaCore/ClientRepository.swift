@@ -62,6 +62,8 @@ public final class ClientRepository {
         savedClient.lastName = normalized.lastName
         savedClient.phone = normalized.phone
         savedClient.email = normalized.email
+        savedClient.taxCode = normalized.taxCode
+        savedClient.billingAddress = normalized.billingAddress
         savedClient.notes = normalized.notes
         savedClient.anamnesis = normalized.anamnesis
         savedClient.physicalAnalysis = normalized.physicalAnalysis
