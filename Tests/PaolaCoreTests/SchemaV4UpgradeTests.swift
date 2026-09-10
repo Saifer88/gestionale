@@ -24,10 +24,13 @@ final class SchemaV4UpgradeTests: XCTestCase {
                 let rate = ServiceRate(serviceID: service.id, name: "Tariffa storica", priceCents: 5000)
                 let session = TrainingSession(id: completedID, startDate: date, serviceID: service.id,
                                               serviceName: service.name, status: .completed)
-                let person = SessionParticipant(sessionID: session.id, clientID: clientID,
+                // La classe partecipante/pacchetto registrata dallo schema V3 è quella storica
+                // di PaolaSchemaV5 (senza metodo di pagamento, aggiunto in V6): inserire i tipi
+                // correnti causerebbe un errore di cast del backing SwiftData.
+                let person = PaolaSchemaV5.SessionParticipant(sessionID: session.id, clientID: clientID,
                                                 clientName: client.fullName, priceCents: 5000)
-                let package = LessonPackage(id: packageID, clientID: clientID, clientName: client.fullName,
-                                             purchasedOn: date, priceCents: 40000)
+                let package = PaolaSchemaV5.LessonPackage(id: packageID, clientID: clientID,
+                                             clientName: client.fullName, purchasedOn: date, priceCents: 40000)
                 context.insert(client); context.insert(service); context.insert(rate)
                 context.insert(session); context.insert(person); context.insert(package)
                 context.insert(LedgerEntry(clientID: clientID, clientName: client.fullName, date: date,

@@ -76,7 +76,10 @@ final class SchemaUpgradeTests: XCTestCase {
                 client.joinedOn = timestamp.addingTimeInterval(-12345)
                 let service = TrainingService(name: "Individuale", durationMinutes: 45,
                     priceCents: 4321, isActive: false, updatedAt: timestamp)
-                let package = LessonPackage(clientID: clientID, clientName: client.fullName,
+                // Lo schema V2 registra le classi storiche di PaolaSchemaV5 per
+                // SessionParticipant e LessonPackage (senza metodo di pagamento, aggiunto in V6).
+                // Il seed deve usare quelle classi, altrimenti il backing SwiftData va in errore.
+                let package = PaolaSchemaV5.LessonPackage(clientID: clientID, clientName: client.fullName,
                     purchasedOn: timestamp, priceCents: 40000,
                     expiresOn: timestamp.addingTimeInterval(30 * 86400), notes: "Pacchetto storico")
                 let cashSession = TrainingSession(startDate: timestamp.addingTimeInterval(86400),
@@ -86,9 +89,9 @@ final class SchemaUpgradeTests: XCTestCase {
                 let packageSession = TrainingSession(startDate: timestamp.addingTimeInterval(2 * 86400),
                     serviceID: service.id, serviceName: service.name, status: .completed,
                     createdAt: timestamp, updatedAt: timestamp.addingTimeInterval(200))
-                let cashParticipant = SessionParticipant(sessionID: cashSession.id, clientID: clientID,
+                let cashParticipant = PaolaSchemaV5.SessionParticipant(sessionID: cashSession.id, clientID: clientID,
                     clientName: client.fullName, priceCents: 3210)
-                let packageParticipant = SessionParticipant(sessionID: packageSession.id, clientID: clientID,
+                let packageParticipant = PaolaSchemaV5.SessionParticipant(sessionID: packageSession.id, clientID: clientID,
                     clientName: client.fullName, priceCents: 3000, packageID: package.id)
                 let use = PackageUse(packageID: package.id, sessionID: packageSession.id,
                     clientID: clientID, createdAt: timestamp.addingTimeInterval(300),
@@ -116,11 +119,27 @@ final class SchemaUpgradeTests: XCTestCase {
                 context.insert(block)
                 try context.save()
 
+                // L'archivio atteso rappresenta lo stato dopo la migrazione a V7, dove
+                // partecipanti e pacchetti hanno il metodo di pagamento con default .cash.
+                // I record si costruiscono dai tipi correnti con gli stessi dati storici.
+                let expectedPackage = LessonPackage(id: package.id, clientID: package.clientID,
+                    clientName: package.clientName, purchasedOn: package.purchasedOn,
+                    priceCents: package.priceCents, capacity: package.capacity,
+                    expiresOn: package.expiresOn, notes: package.notes)
+                let expectedCashParticipant = SessionParticipant(id: cashParticipant.id,
+                    sessionID: cashParticipant.sessionID, clientID: cashParticipant.clientID,
+                    clientName: cashParticipant.clientName, priceCents: cashParticipant.priceCents,
+                    packageID: cashParticipant.packageID)
+                let expectedPackageParticipant = SessionParticipant(id: packageParticipant.id,
+                    sessionID: packageParticipant.sessionID, clientID: packageParticipant.clientID,
+                    clientName: packageParticipant.clientName, priceCents: packageParticipant.priceCents,
+                    packageID: packageParticipant.packageID)
                 var archive = BusinessArchive()
                 archive.services = [BusinessArchive.ServiceRecord(service)]
                 archive.sessions = [cashSession, packageSession].map(BusinessArchive.SessionRecord.init)
-                archive.participants = [cashParticipant, packageParticipant].map(BusinessArchive.ParticipantRecord.init)
-                archive.packages = [BusinessArchive.PackageRecord(package)]
+                archive.participants = [expectedCashParticipant, expectedPackageParticipant]
+                    .map(BusinessArchive.ParticipantRecord.init)
+                archive.packages = [BusinessArchive.PackageRecord(expectedPackage)]
                 archive.packageUses = [BusinessArchive.PackageUseRecord(use)]
                 archive.ledgerEntries = [packageCharge, sessionCharge, payment, refund].map(BusinessArchive.LedgerRecord.init)
                 archive.blocks = [BusinessArchive.BlockRecord(block)]

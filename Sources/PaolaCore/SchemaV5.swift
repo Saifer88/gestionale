@@ -49,6 +49,9 @@ public enum PaolaSchemaV5: VersionedSchema {
         }
     }
 
+    /// Versione storica del cliente, senza codice fiscale e indirizzo di fatturazione
+    /// (aggiunti nella classe corrente in V7). Congelata per distinguere il checksum
+    /// degli schemi V5/V6 da quello di V7 e per collaudare la migrazione lightweight.
     @Model
     public final class Client {
         public var id: UUID = UUID()

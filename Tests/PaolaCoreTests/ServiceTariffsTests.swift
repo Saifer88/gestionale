@@ -253,7 +253,7 @@ final class ServiceTariffsTests: XCTestCase {
                              ServiceRateDraft(name: "Ridotta", priceCents: 3000)]
             draft.id = try BusinessRepository(context: writable.mainContext).saveService(draft)
             let original = try BusinessArchive.capture(context: writable.mainContext)
-            let schema = Schema(versionedSchema: PaolaSchemaV5.self)
+            let schema = Schema(versionedSchema: PaolaSchemaV7.self)
             let readonly = try ModelContainer(for: schema, migrationPlan: PaolaSchemaMigrationPlan.self,
                 configurations: [ModelConfiguration(schema: schema, url: url, allowsSave: false, cloudKitDatabase: .none)])
             let context = readonly.mainContext
