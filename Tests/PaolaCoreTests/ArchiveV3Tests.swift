@@ -80,7 +80,7 @@ final class ArchiveV3Tests: XCTestCase {
             try roundTrip.restore(toNewStoreAt: url)
             let restored = try StoreFactory.makeContainer(url: url)
             let captured = try ArchiveSnapshot.capture(context: restored.mainContext)
-            XCTAssertEqual(captured.version, 5)
+            XCTAssertEqual(captured.version, 6)
             XCTAssertEqual(captured.clients, decoded.clients)
             XCTAssertEqual(captured.business, decoded.business.canonicalized())
             let service = try XCTUnwrap(restored.mainContext.fetch(FetchDescriptor<TrainingService>()).first)

@@ -58,7 +58,7 @@ final class SchemaV5UpgradeTests: XCTestCase {
             draft.preferredRateID = service.tariffs[0].id
             _ = try ClientRepository(context: context).save(draft)
             let snapshot = try ArchiveSnapshot.capture(context: context)
-            XCTAssertEqual(snapshot.version, 5)
+            XCTAssertEqual(snapshot.version, 6)
             let payload = try snapshot.encoded()
             let archive = try ArchiveSnapshot.decode(payload)
             let newURL = directory.appendingPathComponent("new.store")

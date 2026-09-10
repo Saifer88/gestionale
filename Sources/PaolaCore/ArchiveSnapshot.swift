@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 public struct ArchiveSnapshot: Codable {
-    public var version: Int = 5
+    public var version: Int = 6
     public var createdAt: Date = Date()
     public var clients: [ClientRecord]
     public var business: BusinessArchive
@@ -97,7 +97,7 @@ public struct ArchiveSnapshot: Codable {
     }
 
     public func validate() throws {
-        guard (2...5).contains(version), createdAt.timeIntervalSinceReferenceDate.isFinite,
+        guard (2...6).contains(version), createdAt.timeIntervalSinceReferenceDate.isFinite,
               clients.count <= 100_000,
               Set(clients.map(\.id)).count == clients.count else { throw ArchiveError.invalidArchive }
         for client in clients {

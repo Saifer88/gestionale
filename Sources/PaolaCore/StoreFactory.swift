@@ -8,7 +8,7 @@ public enum StoreFactory {
         inMemory: Bool = false,
         cloudKitContainerIdentifier: String? = nil
     ) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: PaolaSchemaV7.self)
+        let schema = Schema(versionedSchema: PaolaSchemaV8.self)
         let configuration: ModelConfiguration
         if inMemory {
             configuration = ModelConfiguration(

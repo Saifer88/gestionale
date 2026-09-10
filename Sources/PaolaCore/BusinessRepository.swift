@@ -299,6 +299,87 @@ public final class BusinessRepository {
         }
     }
 
+    // MARK: - Fatturazione elettronica
+
+    /// Metodi di pagamento per cui è ammessa l'emissione della fattura elettronica.
+    /// Esclusi i contanti (e "Altro" storico).
+    public static let invoiceableMethods: Set<PaymentMethod> = [.stripe, .card, .bankTransfer]
+
+    /// Crea (in stato bozza) la fattura per l'incasso della lezione singola di un partecipante.
+    /// Richiede: sessione completata, partecipante senza pacchetto, metodo ammesso, importo > 0,
+    /// nessuna fattura già presente per lo stesso incasso (idempotenza). Imposta la data di
+    /// fatturazione sull'appuntamento. Non altera i movimenti economici.
+    @discardableResult
+    public func createInvoiceForSession(sessionID: UUID, clientID: UUID, issueDate: Date) throws -> UUID {
+        try transact { writer in
+            try BusinessRules.date(issueDate)
+            // La fattura può essere emessa in qualsiasi stato dell'appuntamento
+            // (programmato, completato, annullato, assenza).
+            let session = try find(sessionID, in: writer, type: TrainingSession.self, name: "Lezione")
+            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>())
+                .filter { $0.sessionID == sessionID && $0.clientID == clientID }
+            guard let participant = participants.first else {
+                throw BusinessError.notFound("Partecipante")
+            }
+            guard participant.packageID == nil else {
+                throw BusinessError.notInvoiceable("La lezione è coperta da un pacchetto: fattura il pacchetto, non la singola lezione.")
+            }
+            guard Self.invoiceableMethods.contains(participant.paymentMethod) else {
+                throw BusinessError.notInvoiceable("La fattura elettronica è disponibile solo per incassi con Stripe, carta o bonifico.")
+            }
+            guard participant.priceCents > 0 else {
+                throw BusinessError.notInvoiceable("Non è possibile fatturare un importo pari a zero.")
+            }
+            let sourceKey = Invoice.sessionSourceKey(sessionID: sessionID, clientID: clientID)
+            try ensureNotAlreadyInvoiced(sourceKey, in: writer)
+
+            let breakdown = try ForfettarioBreakdown.from(totalCents: participant.priceCents)
+            let invoice = Invoice(clientID: clientID, clientName: participant.clientName,
+                issueDate: issueDate, taxableCents: breakdown.taxableCents,
+                contributionCents: breakdown.contributionCents, totalCents: breakdown.totalCents,
+                paymentMethod: participant.paymentMethod, sourceKey: sourceKey, status: .draft)
+            writer.insert(invoice)
+            session.invoiceDate = issueDate
+            session.updatedAt = Date()
+            return invoice.id
+        }
+    }
+
+    /// Crea (in stato bozza) la fattura per l'incasso dell'acquisto di un pacchetto.
+    /// Richiede: metodo ammesso, importo > 0, nessuna fattura già presente (idempotenza).
+    @discardableResult
+    public func createInvoiceForPackage(packageID: UUID, issueDate: Date) throws -> UUID {
+        try transact { writer in
+            try BusinessRules.date(issueDate)
+            let package = try find(packageID, in: writer, type: LessonPackage.self, name: "Pacchetto")
+            guard Self.invoiceableMethods.contains(package.paymentMethod) else {
+                throw BusinessError.notInvoiceable("La fattura elettronica è disponibile solo per incassi con Stripe, carta o bonifico.")
+            }
+            guard package.priceCents > 0 else {
+                throw BusinessError.notInvoiceable("Non è possibile fatturare un importo pari a zero.")
+            }
+            let sourceKey = Invoice.packageSourceKey(packageID)
+            try ensureNotAlreadyInvoiced(sourceKey, in: writer)
+
+            let breakdown = try ForfettarioBreakdown.from(totalCents: package.priceCents)
+            let invoice = Invoice(clientID: package.clientID, clientName: package.clientName,
+                issueDate: issueDate, taxableCents: breakdown.taxableCents,
+                contributionCents: breakdown.contributionCents, totalCents: breakdown.totalCents,
+                paymentMethod: package.paymentMethod, sourceKey: sourceKey, status: .draft)
+            writer.insert(invoice)
+            package.invoiceDate = issueDate
+            return invoice.id
+        }
+    }
+
+    private func ensureNotAlreadyInvoiced(_ sourceKey: String, in writer: ModelContext) throws {
+        let key = sourceKey.lowercased()
+        let existing = try writer.fetch(FetchDescriptor<Invoice>())
+        if existing.contains(where: { $0.sourceKey.lowercased() == key }) {
+            throw BusinessError.alreadyInvoiced
+        }
+    }
+
     @discardableResult
     public func recordPayment(_ draft: PaymentDraft) throws -> UUID {
         throw BusinessError.manualPaymentsDisabled
@@ -403,6 +484,7 @@ public final class BusinessRepository {
             case let value as LessonPackage: return value.id == id
             case let value as LedgerEntry: return value.id == id
             case let value as Unavailability: return value.id == id
+            case let value as Invoice: return value.id == id
             default: return false
             }
         }

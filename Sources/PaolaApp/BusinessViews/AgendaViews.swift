@@ -248,6 +248,14 @@ struct SessionDetailView: View {
     @State private var operation = BusinessOperation()
 
     private var people: [SessionParticipant] { participants.filter { $0.sessionID == session.id } }
+    /// Partecipanti fatturabili: senza pacchetto, con metodo ammesso e importo positivo.
+    private var invoiceableParticipants: [SessionParticipant] {
+        people.filter {
+            $0.packageID == nil
+                && BusinessRepository.invoiceableMethods.contains($0.paymentMethod)
+                && $0.priceCents > 0
+        }
+    }
     private var conflicts: [String] {
         BusinessDates.conflicts(for: session, sessions: sessions, blocks: [])
     }
@@ -323,6 +331,14 @@ struct SessionDetailView: View {
                     }
                     .padding(.vertical, 4)
                 }
+            }
+            ForEach(invoiceableParticipants) { person in
+                SessionInvoiceSection(
+                    session: session,
+                    participant: person,
+                    client: clients.first(where: { $0.id == person.clientID }),
+                    showsName: invoiceableParticipants.count > 1
+                )
             }
             if !session.notes.isEmpty {
                 Section("Note organizzative") { Text(session.notes).textSelection(.enabled) }
@@ -421,5 +437,157 @@ struct ClientSessionsView: View {
             }
         }
         .navigationTitle("Storico appuntamenti")
+    }
+}
+
+/// Sezione "Fattura elettronica" per un partecipante fatturabile di una lezione completata.
+struct SessionInvoiceSection: View {
+    @Environment(\.modelContext) private var context
+    let session: TrainingSession
+    let participant: SessionParticipant
+    let client: Client?
+    let showsName: Bool
+
+    @Query private var invoices: [Invoice]
+    @StateObject private var sender = InvoiceSender()
+    @State private var issueDate: Date
+    @State private var confirming = false
+
+    init(session: TrainingSession, participant: SessionParticipant, client: Client?, showsName: Bool) {
+        self.session = session
+        self.participant = participant
+        self.client = client
+        self.showsName = showsName
+        _issueDate = State(initialValue: session.invoiceDate ?? Date())
+    }
+
+    private var sourceKey: String {
+        Invoice.sessionSourceKey(sessionID: session.id, clientID: participant.clientID)
+    }
+    private var existingInvoice: Invoice? {
+        let key = sourceKey.lowercased()
+        return invoices.first { $0.sourceKey.lowercased() == key }
+    }
+    private var breakdown: ForfettarioBreakdown? {
+        try? ForfettarioBreakdown.from(totalCents: participant.priceCents)
+    }
+    private var lineDescription: String {
+        session.serviceName.trimmingCharacters(in: .whitespaces).isEmpty ? "Lezione" : session.serviceName
+    }
+    private var fiscalIssues: [String] {
+        InvoiceFiscalReadiness.issues(client: client)
+    }
+    private var alreadySent: Bool {
+        guard let status = existingInvoice?.status else { return false }
+        return status == .transmitted || status == .delivered
+    }
+    private var sectionTitle: String {
+        showsName ? "Fattura elettronica · \(participant.clientName)" : "Fattura elettronica"
+    }
+
+    var body: some View {
+        Section(sectionTitle) {
+            if let breakdown {
+                LabeledContent("Imponibile", value: Money.format(breakdown.taxableCents))
+                LabeledContent("Rivalsa INPS (4%)", value: Money.format(breakdown.contributionCents))
+                LabeledContent("Totale", value: Money.format(breakdown.totalCents))
+                Text(ForfettarioTax.riferimentoNormativo)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            DatePicker("Data di fatturazione", selection: $issueDate, displayedComponents: .date)
+                .accessibilityIdentifier("session.invoiceDate")
+                .disabled(alreadySent || sender.isBusy)
+
+            InvoiceStatusRow(invoice: existingInvoice)
+
+            if !fiscalIssues.isEmpty {
+                ForEach(fiscalIssues, id: \.self) { issue in
+                    Label(issue, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.caption)
+                }
+            }
+
+            InvoicePhaseRow(phase: sender.phase)
+
+            Button("Invia fattura elettronica", systemImage: "paperplane") {
+                confirming = true
+            }
+            .accessibilityIdentifier("session.sendInvoice")
+            .disabled(alreadySent || sender.isBusy || !fiscalIssues.isEmpty || breakdown == nil)
+        }
+        .confirmationDialog("Inviare la fattura elettronica?", isPresented: $confirming, titleVisibility: .visible) {
+            Button("Invia fattura") {
+                let client = client
+                Task {
+                    guard let client else { return }
+                    await sender.sendSessionInvoice(
+                        context: context, sessionID: session.id, clientID: participant.clientID,
+                        client: client, issueDate: issueDate, lineDescription: lineDescription
+                    )
+                }
+            }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("La fattura verrà trasmessa al servizio di fatturazione elettronica. Verifica la data e i dati del cliente.")
+        }
+    }
+}
+
+/// Mostra lo stato di un'eventuale fattura già esistente.
+struct InvoiceStatusRow: View {
+    let invoice: Invoice?
+
+    var body: some View {
+        if let invoice {
+            LabeledContent("Stato fattura", value: invoice.status.title)
+            if let error = invoice.errorMessage, !error.isEmpty {
+                Text(error).font(.caption).foregroundStyle(.orange)
+            }
+        }
+    }
+}
+
+/// Mostra la fase corrente dell'invio (progresso o esito).
+struct InvoicePhaseRow: View {
+    let phase: InvoiceSender.Phase
+
+    var body: some View {
+        switch phase {
+        case .idle:
+            EmptyView()
+        case .creating:
+            ProgressView("Creazione fattura…")
+        case .sending:
+            ProgressView("Invio in corso…")
+        case .done:
+            Label("Fattura trasmessa.", systemImage: "checkmark.circle").foregroundStyle(.green).font(.caption)
+        case .failed(let message):
+            Label(message, systemImage: "xmark.circle").foregroundStyle(.red).font(.caption)
+        }
+    }
+}
+
+/// Verifica dei dati fiscali (cedente, credenziali, cliente) per abilitare l'invio.
+enum InvoiceFiscalReadiness {
+    static func issues(client: Client?) -> [String] {
+        var issues: [String] = []
+        let profile = SellerProfileStore().load()
+        if !profile.isComplete {
+            issues.append("Completa i dati fiscali nella sezione Credenziali.")
+        }
+        let credentials = ArubaCredentialsStore(secrets: KeychainSecretStore()).load()
+        if !credentials.isComplete {
+            issues.append("Inserisci le credenziali Aruba nella sezione Credenziali.")
+        }
+        guard let client else {
+            issues.append("Cliente non disponibile.")
+            return issues
+        }
+        if client.taxCode.trimmingCharacters(in: .whitespaces).isEmpty {
+            issues.append("Il cliente non ha un codice fiscale nell'anagrafica.")
+        }
+        if client.billingAddress.trimmingCharacters(in: .whitespaces).isEmpty {
+            issues.append("Il cliente non ha un indirizzo di fatturazione nell'anagrafica.")
+        }
+        return issues
     }
 }

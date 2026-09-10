@@ -82,11 +82,14 @@ final class SchemaUpgradeTests: XCTestCase {
                 let package = PaolaSchemaV5.LessonPackage(clientID: clientID, clientName: client.fullName,
                     purchasedOn: timestamp, priceCents: 40000,
                     expiresOn: timestamp.addingTimeInterval(30 * 86400), notes: "Pacchetto storico")
-                let cashSession = TrainingSession(startDate: timestamp.addingTimeInterval(86400),
+                // Lo schema V2 registra la classe storica di PaolaSchemaV7 per TrainingSession
+                // (senza il campo invoiceDate, aggiunto ai tipi correnti in V8): il seed deve
+                // usare quella classe, altrimenti il backing SwiftData va in errore.
+                let cashSession = PaolaSchemaV7.TrainingSession(startDate: timestamp.addingTimeInterval(86400),
                     durationMinutes: 45, serviceID: service.id, serviceName: "Nome storico",
                     location: "Sede storica", notes: "Nota lezione\nSeconda riga", status: .completed,
                     createdAt: timestamp, updatedAt: timestamp.addingTimeInterval(100))
-                let packageSession = TrainingSession(startDate: timestamp.addingTimeInterval(2 * 86400),
+                let packageSession = PaolaSchemaV7.TrainingSession(startDate: timestamp.addingTimeInterval(2 * 86400),
                     serviceID: service.id, serviceName: service.name, status: .completed,
                     createdAt: timestamp, updatedAt: timestamp.addingTimeInterval(200))
                 let cashParticipant = PaolaSchemaV5.SessionParticipant(sessionID: cashSession.id, clientID: clientID,
@@ -134,9 +137,19 @@ final class SchemaUpgradeTests: XCTestCase {
                     sessionID: packageParticipant.sessionID, clientID: packageParticipant.clientID,
                     clientName: packageParticipant.clientName, priceCents: packageParticipant.priceCents,
                     packageID: packageParticipant.packageID)
+                // Le lezioni attese, dopo la migrazione a V8, hanno invoiceDate == nil.
+                // Si ricostruiscono dai tipi correnti con gli stessi dati storici.
+                let expectedCashSession = TrainingSession(id: cashSession.id, startDate: cashSession.startDate,
+                    durationMinutes: cashSession.durationMinutes, serviceID: cashSession.serviceID,
+                    serviceName: cashSession.serviceName, location: cashSession.location, notes: cashSession.notes,
+                    status: cashSession.status, createdAt: cashSession.createdAt, updatedAt: cashSession.updatedAt)
+                let expectedPackageSession = TrainingSession(id: packageSession.id, startDate: packageSession.startDate,
+                    durationMinutes: packageSession.durationMinutes, serviceID: packageSession.serviceID,
+                    serviceName: packageSession.serviceName, location: packageSession.location, notes: packageSession.notes,
+                    status: packageSession.status, createdAt: packageSession.createdAt, updatedAt: packageSession.updatedAt)
                 var archive = BusinessArchive()
                 archive.services = [BusinessArchive.ServiceRecord(service)]
-                archive.sessions = [cashSession, packageSession].map(BusinessArchive.SessionRecord.init)
+                archive.sessions = [expectedCashSession, expectedPackageSession].map(BusinessArchive.SessionRecord.init)
                 archive.participants = [expectedCashParticipant, expectedPackageParticipant]
                     .map(BusinessArchive.ParticipantRecord.init)
                 archive.packages = [BusinessArchive.PackageRecord(expectedPackage)]

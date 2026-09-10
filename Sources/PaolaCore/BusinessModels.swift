@@ -28,7 +28,7 @@ public enum LedgerKind: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
+public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable {
     case cash, stripe, card, bankTransfer, other
     public var id: String { rawValue }
     public var title: String {
@@ -69,6 +69,9 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
     public var location: String = ""
     public var notes: String = ""
     public var statusRaw: String = "planned"
+    /// Data scelta per la fatturazione della lezione (schema V8). Opzionale: nil finché
+    /// non viene emessa/prevista una fattura. Lo stato della fattura vive sull'entità Invoice.
+    public var invoiceDate: Date?
     public var createdAt: Date = Date()
     public var updatedAt: Date = Date()
 
@@ -81,10 +84,11 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
     public init(id: UUID = UUID(), startDate: Date = Date(), durationMinutes: Int = 60,
                 serviceID: UUID? = nil, serviceName: String = "", location: String = "",
                 notes: String = "", status: SessionStatus = .planned,
+                invoiceDate: Date? = nil,
                 createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id; self.startDate = startDate; self.durationMinutes = durationMinutes
         self.serviceID = serviceID; self.serviceName = serviceName; self.location = location
-        self.notes = notes; self.statusRaw = status.rawValue
+        self.notes = notes; self.statusRaw = status.rawValue; self.invoiceDate = invoiceDate
         self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }
@@ -122,6 +126,8 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
     public var expiresOn: Date?
     public var notes: String = ""
     public var paymentMethodRaw: String = "cash"
+    /// Data scelta per la fatturazione del pacchetto (schema V8). Opzionale, default nil.
+    public var invoiceDate: Date?
 
     public var paymentMethod: PaymentMethod {
         get { PaymentMethod(rawValue: paymentMethodRaw) ?? .cash }
@@ -130,11 +136,13 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable {
 
     public init(id: UUID = UUID(), clientID: UUID = UUID(), clientName: String = "",
                 purchasedOn: Date = Date(), priceCents: Int64 = 0, capacity: Int = 10,
-                expiresOn: Date? = nil, notes: String = "", paymentMethod: PaymentMethod = .cash) {
+                expiresOn: Date? = nil, notes: String = "", paymentMethod: PaymentMethod = .cash,
+                invoiceDate: Date? = nil) {
         self.id = id; self.clientID = clientID; self.clientName = clientName
         self.purchasedOn = purchasedOn; self.priceCents = priceCents; self.capacity = capacity
         self.expiresOn = expiresOn; self.notes = notes
         self.paymentMethodRaw = paymentMethod.rawValue
+        self.invoiceDate = invoiceDate
     }
 }
 
@@ -300,6 +308,8 @@ public enum BusinessError: Error, LocalizedError {
     case inconsistentData(String)
     case amountExceeded
     case arithmeticOverflow
+    case notInvoiceable(String)
+    case alreadyInvoiced
 
     public var errorDescription: String? {
         switch self {
@@ -314,6 +324,8 @@ public enum BusinessError: Error, LocalizedError {
         case .packageExhausted: return "Il pacchetto non ha lezioni disponibili."
         case .amountExceeded: return "L'importo supera il residuo dell'operazione originale."
         case .arithmeticOverflow: return "L'importo supera il limite supportato."
+        case .notInvoiceable(let reason): return reason
+        case .alreadyInvoiced: return "Per questo incasso è già stata creata una fattura elettronica."
         }
     }
 }
@@ -350,6 +362,16 @@ internal enum BusinessRules {
     }
     static func add(_ lhs: Int64, _ rhs: Int64) throws -> Int64 {
         let result = lhs.addingReportingOverflow(rhs)
+        guard !result.overflow else { throw BusinessError.arithmeticOverflow }
+        return result.partialValue
+    }
+    static func subtract(_ lhs: Int64, _ rhs: Int64) throws -> Int64 {
+        let result = lhs.subtractingReportingOverflow(rhs)
+        guard !result.overflow else { throw BusinessError.arithmeticOverflow }
+        return result.partialValue
+    }
+    static func multiply(_ lhs: Int64, _ rhs: Int64) throws -> Int64 {
+        let result = lhs.multipliedReportingOverflow(by: rhs)
         guard !result.overflow else { throw BusinessError.arithmeticOverflow }
         return result.partialValue
     }

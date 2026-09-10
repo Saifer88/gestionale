@@ -295,6 +295,7 @@ struct PackageDetailView: View {
     @Query private var uses: [PackageUse]
     @Query private var sessions: [TrainingSession]
     @Query private var participants: [SessionParticipant]
+    @Query private var clients: [Client]
     @State private var editing = false
 
     private var packageUses: [PackageUse] {
@@ -316,6 +317,9 @@ struct PackageDetailView: View {
                             .accessibilityLabel("Lezioni utilizzate")
                         LabeledContent("Lezioni utilizzate", value: "\(packageUses.count)")
                         if !package.notes.isEmpty { Text(package.notes).textSelection(.enabled) }
+                    }
+                    if BusinessRepository.invoiceableMethods.contains(package.paymentMethod) {
+                        PackageInvoiceSection(package: package, client: clients.first(where: { $0.id == package.clientID }))
                     }
                     Section {
                         NavigationLink("Movimenti e saldo cliente") { PaymentsView(clientID: package.clientID) }
@@ -359,5 +363,84 @@ struct PackageDetailView: View {
             }
         }
         .sheet(isPresented: $editing) { PackageEditor(package: package) }
+    }
+}
+
+/// Sezione "Fattura elettronica" per un pacchetto con metodo di pagamento fatturabile.
+struct PackageInvoiceSection: View {
+    @Environment(\.modelContext) private var context
+    let package: LessonPackage
+    let client: Client?
+
+    @Query private var invoices: [Invoice]
+    @StateObject private var sender = InvoiceSender()
+    @State private var issueDate: Date
+    @State private var confirming = false
+
+    init(package: LessonPackage, client: Client?) {
+        self.package = package
+        self.client = client
+        _issueDate = State(initialValue: package.invoiceDate ?? Date())
+    }
+
+    private var sourceKey: String { Invoice.packageSourceKey(package.id) }
+    private var existingInvoice: Invoice? {
+        let key = sourceKey.lowercased()
+        return invoices.first { $0.sourceKey.lowercased() == key }
+    }
+    private var breakdown: ForfettarioBreakdown? {
+        try? ForfettarioBreakdown.from(totalCents: package.priceCents)
+    }
+    private var lineDescription: String { "Pacchetto \(package.capacity) lezioni" }
+    private var fiscalIssues: [String] { InvoiceFiscalReadiness.issues(client: client) }
+    private var alreadySent: Bool {
+        guard let status = existingInvoice?.status else { return false }
+        return status == .transmitted || status == .delivered
+    }
+
+    var body: some View {
+        Section("Fattura elettronica") {
+            if let breakdown {
+                LabeledContent("Imponibile", value: Money.format(breakdown.taxableCents))
+                LabeledContent("Rivalsa INPS (4%)", value: Money.format(breakdown.contributionCents))
+                LabeledContent("Totale", value: Money.format(breakdown.totalCents))
+                Text(ForfettarioTax.riferimentoNormativo)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            DatePicker("Data di fatturazione", selection: $issueDate, displayedComponents: .date)
+                .accessibilityIdentifier("package.invoiceDate")
+                .disabled(alreadySent || sender.isBusy)
+
+            InvoiceStatusRow(invoice: existingInvoice)
+
+            if !fiscalIssues.isEmpty {
+                ForEach(fiscalIssues, id: \.self) { issue in
+                    Label(issue, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.caption)
+                }
+            }
+
+            InvoicePhaseRow(phase: sender.phase)
+
+            Button("Invia fattura elettronica", systemImage: "paperplane") {
+                confirming = true
+            }
+            .accessibilityIdentifier("package.sendInvoice")
+            .disabled(alreadySent || sender.isBusy || !fiscalIssues.isEmpty || breakdown == nil)
+        }
+        .confirmationDialog("Inviare la fattura elettronica?", isPresented: $confirming, titleVisibility: .visible) {
+            Button("Invia fattura") {
+                let client = client
+                Task {
+                    guard let client else { return }
+                    await sender.sendPackageInvoice(
+                        context: context, packageID: package.id,
+                        client: client, issueDate: issueDate, lineDescription: lineDescription
+                    )
+                }
+            }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("La fattura verrà trasmessa al servizio di fatturazione elettronica. Verifica la data e i dati del cliente.")
+        }
     }
 }

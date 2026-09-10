@@ -22,7 +22,10 @@ final class SchemaV4UpgradeTests: XCTestCase {
                                     anamnesis: "Anamnesi conservata", physicalAnalysis: "Analisi conservata")
                 let service = TrainingService(name: "Servizio storico", priceCents: 5000)
                 let rate = ServiceRate(serviceID: service.id, name: "Tariffa storica", priceCents: 5000)
-                let session = TrainingSession(id: completedID, startDate: date, serviceID: service.id,
+                // La classe lezione registrata dallo schema V3 è quella storica di
+                // PaolaSchemaV7 (senza invoiceDate, aggiunto ai tipi correnti in V8):
+                // inserire il tipo corrente causerebbe un errore di cast del backing SwiftData.
+                let session = PaolaSchemaV7.TrainingSession(id: completedID, startDate: date, serviceID: service.id,
                                               serviceName: service.name, status: .completed)
                 // La classe partecipante/pacchetto registrata dallo schema V3 è quella storica
                 // di PaolaSchemaV5 (senza metodo di pagamento, aggiunto in V6): inserire i tipi
@@ -87,7 +90,7 @@ final class SchemaV4UpgradeTests: XCTestCase {
             session.participants[0].tariffID = service.tariffs[1].id
             _ = try repository.saveSession(session)
             let snapshot = try ArchiveSnapshot.capture(context: context)
-            XCTAssertEqual(snapshot.version, 5)
+            XCTAssertEqual(snapshot.version, 6)
             XCTAssertEqual(snapshot.business.preferences.count, 1)
             let data = try snapshot.encoded()
             let decoded = try ArchiveSnapshot.decode(data)

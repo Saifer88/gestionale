@@ -17,6 +17,7 @@ struct SettingsView: View {
                 NavigationLink { ServicesView() } label: { Label("Servizi e listino", systemImage: "list.bullet.rectangle") }
                 NavigationLink { PackagesView() } label: { Label("Pacchetti", systemImage: "rectangle.stack") }
                 NavigationLink { ReportsView() } label: { Label("Statistiche ed estratti", systemImage: "chart.bar") }
+                NavigationLink { CredentialsView() } label: { Label("Credenziali e fatturazione", systemImage: "key") }
             }
             Section("Archivio") {
                 LocalStorageNotice()

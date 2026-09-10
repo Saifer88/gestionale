@@ -11,11 +11,12 @@ public struct BusinessArchive: Codable, Equatable {
     public var packageUses: [PackageUseRecord] = []
     public var ledgerEntries: [LedgerRecord] = []
     public var blocks: [BlockRecord] = []
+    public var invoices: [InvoiceRecord] = []
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case services, rates, preferences, sessions, participants, packages, packageUses, ledgerEntries, blocks
+        case services, rates, preferences, sessions, participants, packages, packageUses, ledgerEntries, blocks, invoices
     }
 
     public init(from decoder: Decoder) throws {
@@ -29,11 +30,12 @@ public struct BusinessArchive: Codable, Equatable {
         packageUses = try values.decode([PackageUseRecord].self, forKey: .packageUses)
         ledgerEntries = try values.decode([LedgerRecord].self, forKey: .ledgerEntries)
         blocks = try values.decode([BlockRecord].self, forKey: .blocks)
+        invoices = try values.decodeIfPresent([InvoiceRecord].self, forKey: .invoices) ?? []
     }
 
     public var recordCount: Int {
         services.count + rates.count + sessions.count + participants.count + packages.count
-            + packageUses.count + ledgerEntries.count + blocks.count + preferences.count
+            + packageUses.count + ledgerEntries.count + blocks.count + preferences.count + invoices.count
     }
 
     public func canonicalized() -> BusinessArchive {
@@ -47,6 +49,7 @@ public struct BusinessArchive: Codable, Equatable {
         archive.packageUses.sort { $0.id.uuidString < $1.id.uuidString }
         archive.ledgerEntries.sort { $0.id.uuidString < $1.id.uuidString }
         archive.blocks.sort { $0.id.uuidString < $1.id.uuidString }
+        archive.invoices.sort { $0.id.uuidString < $1.id.uuidString }
         return archive
     }
 
@@ -62,6 +65,7 @@ public struct BusinessArchive: Codable, Equatable {
         archive.packageUses = try context.fetch(FetchDescriptor<PackageUse>()).map(PackageUseRecord.init)
         archive.ledgerEntries = try context.fetch(FetchDescriptor<LedgerEntry>()).map(LedgerRecord.init)
         archive.blocks = try context.fetch(FetchDescriptor<Unavailability>()).map(BlockRecord.init)
+        archive.invoices = try context.fetch(FetchDescriptor<Invoice>()).map(InvoiceRecord.init)
         return archive.canonicalized()
     }
 
@@ -70,6 +74,7 @@ public struct BusinessArchive: Codable, Equatable {
         try unique(participants.map(\.id)); try unique(packages.map(\.id))
         try unique(packageUses.map(\.id)); try unique(ledgerEntries.map(\.id)); try unique(blocks.map(\.id))
         try unique(preferences.map(\.id)); try unique(preferences.map(\.clientID))
+        try unique(invoices.map(\.id))
         let serviceIDs = Set(services.map(\.id))
         let sessionMap = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
         let packageMap = Dictionary(uniqueKeysWithValues: packages.map { ($0.id, $0) })
@@ -266,6 +271,19 @@ public struct BusinessArchive: Codable, Equatable {
             try require(block.startDate < block.endDate, "Intervallo indisponibilità non valido.")
             try require(!block.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "Titolo indisponibilità mancante.")
         }
+        // La fattura è un documento informativo: si verificano solo integrità di base
+        // (cliente esistente, date finite, importi non negativi, stato e metodo validi),
+        // senza vincoli economici sui movimenti.
+        for invoice in invoices {
+            try require(clientIDs.contains(invoice.clientID), "Cliente della fattura mancante.")
+            try BusinessRules.date(invoice.issueDate); try BusinessRules.date(invoice.createdAt)
+            try BusinessRules.date(invoice.updatedAt)
+            try BusinessRules.amount(invoice.taxableCents)
+            try BusinessRules.amount(invoice.contributionCents)
+            try BusinessRules.amount(invoice.totalCents)
+            try require(InvoiceStatus(rawValue: invoice.statusRaw) != nil, "Stato fattura non valido.")
+            try require(PaymentMethod(rawValue: invoice.paymentMethodRaw) != nil, "Metodo di pagamento della fattura non valido.")
+        }
     }
 
     @MainActor
@@ -281,7 +299,8 @@ public struct BusinessArchive: Codable, Equatable {
             && Set(existing.packages.map(\.id)).isDisjoint(with: packages.map(\.id))
             && Set(existing.packageUses.map(\.id)).isDisjoint(with: packageUses.map(\.id))
             && Set(existing.ledgerEntries.map(\.id)).isDisjoint(with: ledgerEntries.map(\.id))
-            && Set(existing.blocks.map(\.id)).isDisjoint(with: blocks.map(\.id)),
+            && Set(existing.blocks.map(\.id)).isDisjoint(with: blocks.map(\.id))
+            && Set(existing.invoices.map(\.id)).isDisjoint(with: invoices.map(\.id)),
             "L'archivio contiene identificativi già presenti.")
         var combined = existing
         combined.services += services; combined.sessions += sessions; combined.participants += participants
@@ -289,6 +308,7 @@ public struct BusinessArchive: Codable, Equatable {
         combined.preferences += preferences
         combined.packages += packages; combined.packageUses += packageUses
         combined.ledgerEntries += ledgerEntries; combined.blocks += blocks
+        combined.invoices += invoices
         try combined.validate(clientIDs: clientIDs)
         for record in services { context.insert(record.model()) }
         for record in rates { context.insert(record.model()) }
@@ -299,6 +319,7 @@ public struct BusinessArchive: Codable, Equatable {
         for record in packageUses { context.insert(record.model()) }
         for record in ledgerEntries { context.insert(record.model()) }
         for record in blocks { context.insert(record.model()) }
+        for record in invoices { context.insert(record.model()) }
     }
 
     private func unique(_ ids: [UUID]) throws {
@@ -381,17 +402,33 @@ public struct BusinessArchive: Codable, Equatable {
         public var location: String
         public var notes: String
         public var statusRaw: String
+        public var invoiceDate: Date?
         public var createdAt: Date
         public var updatedAt: Date
         public init(_ value: TrainingSession) {
             id = value.id; startDate = value.startDate; durationMinutes = value.durationMinutes
             serviceID = value.serviceID; serviceName = value.serviceName; location = value.location
-            notes = value.notes; statusRaw = value.statusRaw; createdAt = value.createdAt; updatedAt = value.updatedAt
+            notes = value.notes; statusRaw = value.statusRaw; invoiceDate = value.invoiceDate
+            createdAt = value.createdAt; updatedAt = value.updatedAt
+        }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            startDate = try c.decode(Date.self, forKey: .startDate)
+            durationMinutes = try c.decode(Int.self, forKey: .durationMinutes)
+            serviceID = try c.decodeIfPresent(UUID.self, forKey: .serviceID)
+            serviceName = try c.decode(String.self, forKey: .serviceName)
+            location = try c.decode(String.self, forKey: .location)
+            notes = try c.decode(String.self, forKey: .notes)
+            statusRaw = try c.decode(String.self, forKey: .statusRaw)
+            invoiceDate = try c.decodeIfPresent(Date.self, forKey: .invoiceDate)
+            createdAt = try c.decode(Date.self, forKey: .createdAt)
+            updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         }
         internal func model() -> TrainingSession {
             let value = TrainingSession(id: id, startDate: startDate, durationMinutes: durationMinutes,
                 serviceID: serviceID, serviceName: serviceName, location: location, notes: notes,
-                createdAt: createdAt, updatedAt: updatedAt)
+                invoiceDate: invoiceDate, createdAt: createdAt, updatedAt: updatedAt)
             value.statusRaw = statusRaw
             return value
         }
@@ -435,11 +472,12 @@ public struct BusinessArchive: Codable, Equatable {
         public var expiresOn: Date?
         public var notes: String
         public var paymentMethodRaw: String
+        public var invoiceDate: Date?
         public init(_ value: LessonPackage) {
             id = value.id; clientID = value.clientID; clientName = value.clientName
             purchasedOn = value.purchasedOn; priceCents = value.priceCents; capacity = value.capacity
             expiresOn = value.expiresOn; notes = value.notes
-            paymentMethodRaw = value.paymentMethodRaw
+            paymentMethodRaw = value.paymentMethodRaw; invoiceDate = value.invoiceDate
         }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -452,11 +490,12 @@ public struct BusinessArchive: Codable, Equatable {
             expiresOn = try c.decodeIfPresent(Date.self, forKey: .expiresOn)
             notes = try c.decode(String.self, forKey: .notes)
             paymentMethodRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethodRaw) ?? "cash"
+            invoiceDate = try c.decodeIfPresent(Date.self, forKey: .invoiceDate)
         }
         internal func model() -> LessonPackage {
             LessonPackage(id: id, clientID: clientID, clientName: clientName, purchasedOn: purchasedOn,
                 priceCents: priceCents, capacity: capacity, expiresOn: expiresOn, notes: notes,
-                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash)
+                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash, invoiceDate: invoiceDate)
         }
     }
     public struct PackageUseRecord: Codable, Equatable {
@@ -511,6 +550,54 @@ public struct BusinessArchive: Codable, Equatable {
         }
         internal func model() -> Unavailability {
             Unavailability(id: id, startDate: startDate, endDate: endDate, title: title)
+        }
+    }
+    public struct InvoiceRecord: Codable, Equatable {
+        public var id: UUID
+        public var clientID: UUID
+        public var clientName: String
+        public var issueDate: Date
+        public var taxableCents: Int64
+        public var contributionCents: Int64
+        public var totalCents: Int64
+        public var paymentMethodRaw: String
+        public var sourceKey: String
+        public var statusRaw: String
+        public var arubaInvoiceId: String?
+        public var createdAt: Date
+        public var updatedAt: Date
+        public var errorMessage: String?
+        public init(_ value: Invoice) {
+            id = value.id; clientID = value.clientID; clientName = value.clientName
+            issueDate = value.issueDate; taxableCents = value.taxableCents
+            contributionCents = value.contributionCents; totalCents = value.totalCents
+            paymentMethodRaw = value.paymentMethodRaw; sourceKey = value.sourceKey
+            statusRaw = value.statusRaw; arubaInvoiceId = value.arubaInvoiceId
+            createdAt = value.createdAt; updatedAt = value.updatedAt; errorMessage = value.errorMessage
+        }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            clientID = try c.decode(UUID.self, forKey: .clientID)
+            clientName = try c.decode(String.self, forKey: .clientName)
+            issueDate = try c.decode(Date.self, forKey: .issueDate)
+            taxableCents = try c.decode(Int64.self, forKey: .taxableCents)
+            contributionCents = try c.decodeIfPresent(Int64.self, forKey: .contributionCents) ?? 0
+            totalCents = try c.decode(Int64.self, forKey: .totalCents)
+            paymentMethodRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethodRaw) ?? "cash"
+            sourceKey = try c.decodeIfPresent(String.self, forKey: .sourceKey) ?? ""
+            statusRaw = try c.decodeIfPresent(String.self, forKey: .statusRaw) ?? "draft"
+            arubaInvoiceId = try c.decodeIfPresent(String.self, forKey: .arubaInvoiceId)
+            createdAt = try c.decode(Date.self, forKey: .createdAt)
+            updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+            errorMessage = try c.decodeIfPresent(String.self, forKey: .errorMessage)
+        }
+        internal func model() -> Invoice {
+            Invoice(id: id, clientID: clientID, clientName: clientName, issueDate: issueDate,
+                    taxableCents: taxableCents, contributionCents: contributionCents, totalCents: totalCents,
+                    paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash, sourceKey: sourceKey,
+                    status: InvoiceStatus(rawValue: statusRaw) ?? .draft, arubaInvoiceId: arubaInvoiceId,
+                    createdAt: createdAt, updatedAt: updatedAt, errorMessage: errorMessage)
         }
     }
 }
