@@ -70,7 +70,7 @@ struct ServicesView: View {
                 }
             }
         }
-        .navigationTitle("Servizi e tariffe")
+        .sectionTitle("Servizi e tariffe", symbol: AppSection.services.symbol)
         .accessibilityIdentifier("services.screen")
         .searchable(text: $search, prompt: "Nome del servizio")
         .toolbar {

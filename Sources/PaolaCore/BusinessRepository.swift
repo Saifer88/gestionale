@@ -215,7 +215,6 @@ public final class BusinessRepository {
     @discardableResult
     public func savePackage(_ draft: PackageDraft) throws -> UUID {
         try transact { writer in
-            let client = try client(draft.clientID, in: writer, requireActive: true)
             try BusinessRules.date(draft.purchasedOn); try BusinessRules.amount(draft.priceCents)
             try BusinessRules.packageCapacity(draft.capacity)
             if let expiry = draft.expiresOn {
@@ -224,10 +223,45 @@ public final class BusinessRepository {
                     throw BusinessError.invalidInput("La scadenza non può precedere l'acquisto.")
                 }
             }
+            let notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if let id = draft.id {
+                // Modifica di un pacchetto esistente. Il cliente non cambia (i movimenti
+                // economici restano associati allo stesso cliente).
+                let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
+                let uses = try writer.fetch(FetchDescriptor<PackageUse>())
+                let used = BusinessReports.used(package: package, uses: uses)
+                guard draft.capacity >= used else { throw BusinessError.packageCapacityBelowUsage }
+
+                package.purchasedOn = draft.purchasedOn
+                package.priceCents = draft.priceCents
+                package.capacity = draft.capacity
+                package.expiresOn = draft.expiresOn
+                package.notes = notes
+
+                // Allinea i movimenti economici collegati (addebito e incasso) a prezzo/data.
+                let entries = try writer.fetch(FetchDescriptor<LedgerEntry>())
+                let chargeSource = BusinessRules.packageSource(package.id)
+                let incomeSource = BusinessRules.packageIncomeSource(package.id)
+                for entry in entries where entry.originalEntryID == nil {
+                    let key = entry.sourceKey.lowercased()
+                    if key == chargeSource.lowercased() {
+                        entry.date = draft.purchasedOn
+                        entry.amountCents = draft.priceCents
+                        entry.notes = "Pacchetto \(draft.capacity) lezioni"
+                    } else if key == incomeSource.lowercased() {
+                        entry.date = draft.purchasedOn
+                        entry.amountCents = draft.priceCents
+                        entry.notes = "Pacchetto \(draft.capacity) lezioni"
+                    }
+                }
+                return package.id
+            }
+
+            let client = try client(draft.clientID, in: writer, requireActive: true)
             let package = LessonPackage(clientID: client.id, clientName: client.fullName,
                 purchasedOn: draft.purchasedOn, priceCents: draft.priceCents, capacity: draft.capacity,
-                expiresOn: draft.expiresOn,
-                notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines))
+                expiresOn: draft.expiresOn, notes: notes)
             writer.insert(package)
             writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
                 kind: .charge, amountCents: draft.priceCents, notes: "Pacchetto \(draft.capacity) lezioni",
@@ -239,6 +273,26 @@ public final class BusinessRepository {
                     sourceKey: BusinessRules.packageIncomeSource(package.id)))
             }
             return package.id
+        }
+    }
+
+    /// Elimina un pacchetto e i suoi movimenti economici collegati (addebito e incasso).
+    /// Consentito solo se nessuna lezione del pacchetto è stata utilizzata, per non
+    /// alterare lo storico delle sedute completate.
+    public func deletePackage(_ id: UUID) throws {
+        try transact { writer in
+            let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
+            let uses = try writer.fetch(FetchDescriptor<PackageUse>())
+            guard !uses.contains(where: { $0.packageID == id }) else {
+                throw BusinessError.packageInUse
+            }
+            let chargeSource = BusinessRules.packageSource(id).lowercased()
+            let incomeSource = BusinessRules.packageIncomeSource(id).lowercased()
+            for entry in try writer.fetch(FetchDescriptor<LedgerEntry>())
+            where entry.sourceKey.lowercased() == chargeSource || entry.sourceKey.lowercased() == incomeSource {
+                writer.delete(entry)
+            }
+            writer.delete(package)
         }
     }
 

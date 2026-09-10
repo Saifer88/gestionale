@@ -6,7 +6,6 @@ struct SettingsView: View {
     @AppStorage("reminders.enabled") private var remindersEnabled = false
     @AppStorage("reminders.minutesBefore") private var minutesBefore = 15
     @State private var notificationError: String?
-    @State private var creatingBlock = false
 
     private static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
@@ -18,7 +17,6 @@ struct SettingsView: View {
                 NavigationLink { ServicesView() } label: { Label("Servizi e listino", systemImage: "list.bullet.rectangle") }
                 NavigationLink { PackagesView() } label: { Label("Pacchetti", systemImage: "rectangle.stack") }
                 NavigationLink { ReportsView() } label: { Label("Statistiche ed estratti", systemImage: "chart.bar") }
-                Button("Pausa o ferie", systemImage: "calendar.badge.minus") { creatingBlock = true }
             }
             Section("Archivio") {
                 LocalStorageNotice()
@@ -72,8 +70,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Impostazioni")
-        .sheet(isPresented: $creatingBlock) { BlockEditor() }
+        .sectionTitle(.settings)
         .alert("Notifiche", isPresented: Binding(get: { notificationError != nil }, set: { if !$0 { notificationError = nil } })) {
             Button("OK", role: .cancel) { notificationError = nil }
         } message: { Text(notificationError ?? "") }

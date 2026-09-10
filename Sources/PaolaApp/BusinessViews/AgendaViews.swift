@@ -16,19 +16,16 @@ private enum AgendaPeriod: String, CaseIterable, Identifiable {
 
 private enum AgendaItem: Identifiable {
     case session(TrainingSession)
-    case block(Unavailability)
 
     var id: String {
         switch self {
         case .session(let session): return "session-\(session.id)"
-        case .block(let block): return "block-\(block.id)"
         }
     }
 
     var startDate: Date {
         switch self {
         case .session(let session): return session.startDate
-        case .block(let block): return block.startDate
         }
     }
 }
@@ -37,14 +34,11 @@ struct AgendaView: View {
     @Query(sort: \TrainingSession.startDate) private var sessions: [TrainingSession]
     @Query private var participants: [SessionParticipant]
     @Query private var clients: [Client]
-    @Query(sort: \Unavailability.startDate) private var blocks: [Unavailability]
     @State private var period: AgendaPeriod = .week
     @State private var selectedDate = Date()
     @State private var status: SessionStatus?
     @State private var search = ""
-    @State private var includeBlocks = true
     @State private var creatingSession = false
-    @State private var editingBlock: Unavailability?
 
     private var interval: DateInterval {
         SchedulingSuggestions.calendar.dateInterval(of: period.component, for: selectedDate)
@@ -60,13 +54,6 @@ struct AgendaView: View {
                 && (search.isEmpty || $0.serviceName.localizedStandardContains(search) || matchingPeople.contains($0.id))
         }
     }
-    private var visibleBlocks: [Unavailability] {
-        guard includeBlocks else { return [] }
-        return blocks.filter {
-            BusinessDates.overlaps(interval.start, interval.end, $0.startDate, $0.endDate)
-                && (search.isEmpty || $0.title.localizedStandardContains(search))
-        }
-    }
     private var days: [Date] {
         var result: [Date] = []
         var cursor = interval.start
@@ -76,19 +63,29 @@ struct AgendaView: View {
         }
         return result
     }
+    /// Giorni mostrati nella vista settimana: sabato e domenica compaiono solo se
+    /// hanno almeno un appuntamento visibile.
+    private var weekDays: [Date] {
+        let calendar = SchedulingSuggestions.calendar
+        return days.filter { day in
+            let weekday = calendar.component(.weekday, from: day)
+            let isWeekend = (weekday == 7 || weekday == 1) // 7 = sabato, 1 = domenica
+            return !isWeekend || !items(on: day).isEmpty
+        }
+    }
 
     var body: some View {
         Group {
-            if let error = _sessions.fetchError ?? _participants.fetchError ?? _blocks.fetchError ?? _clients.fetchError {
+            if let error = _sessions.fetchError ?? _participants.fetchError ?? _clients.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
                 agenda
             }
         }
-        .navigationTitle("Agenda")
+        .sectionTitle(.agenda)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agenda.screen")
-        .searchable(text: $search, prompt: "Cliente, servizio o indisponibilità")
+        .searchable(text: $search, prompt: "Cliente o servizio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -100,7 +97,6 @@ struct AgendaView: View {
             }
         }
         .sheet(isPresented: $creatingSession) { SessionEditor() }
-        .sheet(item: $editingBlock) { BlockEditor(block: $0) }
     }
 
     private var agenda: some View {
@@ -125,7 +121,7 @@ struct AgendaView: View {
                     HStack { filters }
                     VStack(alignment: .leading) { filters }
                 }
-                Text("\(visibleSessions.count) appuntamenti · \(visibleBlocks.count) indisponibilità · \(scheduledMinutes / 60) h \(scheduledMinutes % 60) min")
+                Text("\(visibleSessions.count) appuntamenti · \(scheduledMinutes / 60) h \(scheduledMinutes % 60) min")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding()
@@ -134,9 +130,9 @@ struct AgendaView: View {
                 weekColumns
             } else {
                 List {
-                    if visibleSessions.isEmpty && visibleBlocks.isEmpty {
+                    if visibleSessions.isEmpty {
                         ContentUnavailableView("Agenda libera", systemImage: "calendar",
-                                               description: Text("Nessun elemento corrisponde al periodo e ai filtri."))
+                                               description: Text("Nessun appuntamento corrisponde al periodo e ai filtri."))
                     }
                     ForEach(days, id: \.self) { day in daySection(day) }
                 }
@@ -150,7 +146,6 @@ struct AgendaView: View {
             Text("Tutti gli stati").tag(nil as SessionStatus?)
             ForEach(SessionStatus.allCases.filter { $0 != .cancelled }) { Text($0.title).tag(Optional($0)) }
         }
-        Toggle("Pause e ferie", isOn: $includeBlocks)
     }
 
     private var scheduledMinutes: Int {
@@ -160,10 +155,12 @@ struct AgendaView: View {
 
     private var weekColumns: some View {
         GeometryReader { geometry in
-            let width = max(180, (geometry.size.width - 32 - 6 * 12) / 7)
+            let columns = weekDays
+            let count = max(1, columns.count)
+            let width = max(180, (geometry.size.width - 32 - CGFloat(count - 1) * 12) / CGFloat(count))
             ScrollView([.horizontal, .vertical]) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(days, id: \.self) { day in
+                    ForEach(columns, id: \.self) { day in
                         VStack(alignment: .leading, spacing: 12) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(SchedulingSuggestions.dayLabel(day)).font(.headline)
@@ -203,12 +200,7 @@ struct AgendaView: View {
         let daySessions = visibleSessions.filter {
             BusinessDates.overlaps(day, dayEnd, $0.startDate, $0.endDate)
         }
-        let dayBlocks = visibleBlocks.filter {
-            BusinessDates.overlaps(day, dayEnd, $0.startDate, $0.endDate)
-        }
-        let sessionItems: [AgendaItem] = daySessions.map { .session($0) }
-        let blockItems: [AgendaItem] = dayBlocks.map { .block($0) }
-        return (sessionItems + blockItems).sorted { left, right in
+        return daySessions.map { AgendaItem.session($0) }.sorted { left, right in
             if left.startDate == right.startDate { return left.id < right.id }
             return left.startDate < right.startDate
         }
@@ -225,39 +217,17 @@ struct AgendaView: View {
 
     @ViewBuilder private func itemRow(_ item: AgendaItem) -> some View {
         switch item {
-        case .block(let block):
-            blockRow(block)
         case .session(let session):
             NavigationLink {
                 SessionDetailView(session: session)
             } label: {
                 CalendarSessionRow(
                     session: session, participants: participants, clients: clients,
-                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: blocks).isEmpty
+                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
                 )
             }
             .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
         }
-    }
-
-    private func blockRow(_ block: Unavailability) -> some View {
-        Button { editingBlock = block } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Label(block.title, systemImage: "calendar.badge.minus").font(.headline)
-                Text("\(BusinessFormatting.dateTime(block.startDate)) – \(BusinessFormatting.dateTime(block.endDate))")
-                    .font(.caption).foregroundStyle(.secondary)
-                if sessions.contains(where: {
-                    ($0.status == .planned || $0.status == .completed)
-                        && BusinessDates.overlaps(block.startDate, block.endDate, $0.startDate, $0.endDate)
-                }) {
-                    Label("Appuntamenti sovrapposti", systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.orange)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private func move(_ direction: Int) {
@@ -273,19 +243,18 @@ struct SessionDetailView: View {
     @Query private var participants: [SessionParticipant]
     @Query private var clients: [Client]
     @Query private var sessions: [TrainingSession]
-    @Query private var blocks: [Unavailability]
     @State private var editing = false
     @State private var pendingStatus: SessionStatus?
     @State private var operation = BusinessOperation()
 
     private var people: [SessionParticipant] { participants.filter { $0.sessionID == session.id } }
     private var conflicts: [String] {
-        BusinessDates.conflicts(for: session, sessions: sessions, blocks: blocks)
+        BusinessDates.conflicts(for: session, sessions: sessions, blocks: [])
     }
 
     var body: some View {
         Group {
-            if let error = _participants.fetchError ?? _clients.fetchError ?? _sessions.fetchError ?? _blocks.fetchError {
+            if let error = _participants.fetchError ?? _clients.fetchError ?? _sessions.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
                 detail
@@ -411,95 +380,10 @@ struct SessionDetailView: View {
     }
 }
 
-struct BlockEditor: View {
-    @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft: BlockDraft
-    @State private var operation = BusinessOperation()
-    @State private var confirmingOverlap = false
-    @State private var confirmingDelete = false
-
-    init(block: Unavailability? = nil) {
-        var value = BlockDraft()
-        if let block {
-            value.id = block.id
-            value.startDate = block.startDate
-            value.endDate = block.endDate
-            value.title = block.title
-        }
-        _draft = State(initialValue: value)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Pausa o ferie") {
-                    TextField("Titolo", text: $draft.title)
-                    DatePicker("Da", selection: $draft.startDate)
-                    DatePicker("A", selection: $draft.endDate)
-                    Text("Puoi bloccare poche ore oppure più giorni. Gli appuntamenti già presenti non vengono cancellati.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if draft.id != nil {
-                    Section {
-                        Button("Elimina indisponibilità", role: .destructive) { confirmingDelete = true }
-                            .disabled(operation.committed)
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .navigationTitle(draft.id == nil ? "Nuova indisponibilità" : "Modifica indisponibilità")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Annulla") { dismiss() }.keyboardShortcut(.cancelAction)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Salva") { save() }
-                        .keyboardShortcut(.defaultAction).disabled(operation.committed)
-                }
-            }
-        }
-        .businessEditorSize()
-        .interactiveDismissDisabled()
-        .confirmationDialog("Sono presenti sovrapposizioni", isPresented: $confirmingOverlap,
-                            titleVisibility: .visible) {
-            Button("Salva comunque") { save(allowOverlap: true) }
-            Button("Torna alle date", role: .cancel) {}
-        } message: {
-            Text("L'intervallo coincide con appuntamenti o altre indisponibilità. Gli appuntamenti rimarranno in agenda.")
-        }
-        .confirmationDialog("Eliminare l'indisponibilità?", isPresented: $confirmingDelete,
-                            titleVisibility: .visible) {
-            Button("Elimina", role: .destructive, action: delete)
-            Button("Annulla", role: .cancel) {}
-        } message: {
-            Text("Gli appuntamenti non vengono modificati.")
-        }
-        .businessError($operation, onCommitted: { dismiss() })
-    }
-
-    private func save(allowOverlap: Bool = false) {
-        do {
-            _ = try BusinessRepository(context: context).saveBlock(draft, allowOverlap: allowOverlap)
-            dismiss()
-        } catch BusinessError.overlap { confirmingOverlap = true }
-        catch { operation.capture(error) }
-    }
-
-    private func delete() {
-        guard let id = draft.id else { return }
-        do {
-            try BusinessRepository(context: context).deleteBlock(id)
-            dismiss()
-        } catch { operation.capture(error) }
-    }
-}
-
 struct ClientSessionsView: View {
     let clientID: UUID
     @Query(sort: \TrainingSession.startDate, order: .reverse) private var sessions: [TrainingSession]
     @Query private var participants: [SessionParticipant]
-    @Query private var blocks: [Unavailability]
     @State private var status: SessionStatus?
 
     private var visibleSessions: [TrainingSession] {
@@ -509,7 +393,7 @@ struct ClientSessionsView: View {
 
     var body: some View {
         Group {
-            if let error = _sessions.fetchError ?? _participants.fetchError ?? _blocks.fetchError {
+            if let error = _sessions.fetchError ?? _participants.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
                 List {
@@ -528,7 +412,7 @@ struct ClientSessionsView: View {
                                 Text(BusinessFormatting.day(session.startDate)).font(.caption).foregroundStyle(.secondary)
                                 SessionSummaryRow(
                                     session: session, participants: participants,
-                                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: blocks).isEmpty
+                                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
                                 )
                             }
                         }

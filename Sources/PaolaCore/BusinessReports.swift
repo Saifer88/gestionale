@@ -182,10 +182,15 @@ public enum BusinessReports {
     }
 
     public static func remaining(package: LessonPackage, uses: [PackageUse]) -> Int {
+        max(0, package.capacity - used(package: package, uses: uses))
+    }
+
+    /// Numero di lezioni effettivamente utilizzate dal pacchetto (dedup per sessione).
+    public static func used(package: LessonPackage, uses: [PackageUse]) -> Int {
         let keys = Set(uses.filter { $0.packageID == package.id }.map {
             BusinessRules.sessionSource(sessionID: $0.sessionID, clientID: $0.clientID)
         })
-        return max(0, package.capacity - min(max(0, package.capacity), keys.count))
+        return min(max(0, package.capacity), keys.count)
     }
 
     public static func statement(clientID: UUID?, from: Date, to: Date,

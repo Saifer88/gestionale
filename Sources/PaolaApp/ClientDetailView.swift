@@ -11,6 +11,8 @@ struct ClientDetailView: View {
     @State private var confirmingArchive = false
     @State private var formError: FormError?
     @State private var savedButRefreshFailed = false
+    @State private var creatingSession = false
+    @State private var creatingPackage = false
 
     var body: some View {
         Form {
@@ -28,6 +30,27 @@ struct ClientDetailView: View {
                     }
                 }
                 .padding(.vertical, 8)
+            }
+
+            if !client.isArchived {
+                Section {
+                    Button {
+                        creatingSession = true
+                    } label: {
+                        Label("Nuovo appuntamento", systemImage: "calendar.badge.plus")
+                    }
+                    .accessibilityIdentifier("client.newAppointment")
+                    Button {
+                        creatingPackage = true
+                    } label: {
+                        Label("Nuovo pacchetto", systemImage: "rectangle.stack.badge.plus")
+                    }
+                    .accessibilityIdentifier("client.newPackage")
+                } header: {
+                    Text("Azioni rapide")
+                } footer: {
+                    Text("Il cliente è già selezionato nel nuovo appuntamento e nel nuovo pacchetto.")
+                }
             }
 
             Section("Recapiti") {
@@ -113,6 +136,12 @@ struct ClientDetailView: View {
         }
         .sheet(isPresented: $showingEditor) {
             ClientEditor(client: client)
+        }
+        .sheet(isPresented: $creatingSession) {
+            SessionEditor(clientID: client.id)
+        }
+        .sheet(isPresented: $creatingPackage) {
+            PackageEditor(clientID: client.id)
         }
         .confirmationDialog(
             client.isArchived ? "Riattivare il cliente?" : "Archiviare il cliente?",

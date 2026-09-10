@@ -2,6 +2,18 @@ import PaolaCore
 import SwiftData
 import SwiftUI
 
+/// Titolo con icona per la sezione Pagamenti; titolo semplice per il conto di un cliente.
+private struct PaymentsTitleModifier: ViewModifier {
+    let clientID: UUID?
+    func body(content: Content) -> some View {
+        if clientID == nil {
+            content.sectionTitle(.payments)
+        } else {
+            content.navigationTitle("Conto cliente")
+        }
+    }
+}
+
 struct PaymentsView: View {
     @Query(sort: \LedgerEntry.date, order: .reverse) private var entries: [LedgerEntry]
     @Query private var clients: [Client]
@@ -86,7 +98,7 @@ struct PaymentsView: View {
                 }
             }
         }
-        .navigationTitle(clientID == nil ? "Pagamenti e movimenti" : "Conto cliente")
+        .modifier(PaymentsTitleModifier(clientID: clientID))
         .accessibilityIdentifier("payments.screen")
     }
 

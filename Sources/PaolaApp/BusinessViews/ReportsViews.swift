@@ -71,7 +71,7 @@ struct ReportsView: View {
                 reportList
             }
         }
-        .navigationTitle("Report ed estratto conto")
+        .sectionTitle("Report ed estratto conto", symbol: AppSection.reports.symbol)
         .accessibilityIdentifier("reports.screen")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

@@ -228,6 +228,7 @@ public struct SessionDraft {
 }
 
 public struct PackageDraft {
+    public var id: UUID?
     public var clientID = UUID()
     public var purchasedOn = Date()
     public var priceCents: Int64 = 0
@@ -235,6 +236,11 @@ public struct PackageDraft {
     public var expiresOn: Date?
     public var notes = ""
     public init() {}
+    public init(_ model: LessonPackage) {
+        id = model.id; clientID = model.clientID; purchasedOn = model.purchasedOn
+        priceCents = model.priceCents; capacity = model.capacity
+        expiresOn = model.expiresOn; notes = model.notes
+    }
 }
 
 public struct PaymentDraft {
@@ -263,6 +269,8 @@ public enum BusinessError: Error, LocalizedError {
     case overlap
     case completedSessionLocked
     case serviceInUse
+    case packageInUse
+    case packageCapacityBelowUsage
     case manualPaymentsDisabled
     case packageExhausted
     case inconsistentData(String)
@@ -276,6 +284,8 @@ public enum BusinessError: Error, LocalizedError {
         case .overlap: return "L'orario si sovrappone a una lezione o a un'indisponibilità."
         case .completedSessionLocked: return "Una lezione completata non può essere modificata o riaperta."
         case .serviceInUse: return "Il servizio è usato in uno o più appuntamenti e non può essere eliminato senza perdere lo storico. Disattivalo per non proporlo nei nuovi appuntamenti."
+        case .packageInUse: return "Il pacchetto ha lezioni già utilizzate e non può essere eliminato senza alterare lo storico. Puoi comunque modificarne i dati."
+        case .packageCapacityBelowUsage: return "Il numero di lezioni non può essere inferiore a quelle già utilizzate."
         case .manualPaymentsDisabled: return "Gli incassi vengono registrati automaticamente all'acquisto di un pacchetto o al completamento di una lezione. I pagamenti manuali non sono più disponibili."
         case .packageExhausted: return "Il pacchetto non ha lezioni disponibili."
         case .amountExceeded: return "L'importo supera il residuo dell'operazione originale."

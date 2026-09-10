@@ -89,7 +89,7 @@ struct ClientsView: View {
             .foregroundStyle(.secondary)
             .padding()
         }
-        .navigationTitle("Clienti")
+        .sectionTitle(.clients)
         .searchable(text: $searchText, prompt: "Nome, telefono o email")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

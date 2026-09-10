@@ -53,7 +53,7 @@ struct PackagesView: View {
                 }
             }
         }
-        .navigationTitle("Pacchetti")
+        .sectionTitle(.packages)
         .accessibilityIdentifier("packages.screen")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -95,6 +95,8 @@ struct PackageEditor: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query private var clients: [Client]
+    @Query private var uses: [PackageUse]
+    private let package: LessonPackage?
     @State private var selectedClientID: UUID?
     @State private var purchasedOn = Date()
     @State private var price = ""
@@ -104,9 +106,28 @@ struct PackageEditor: View {
     @State private var notes = ""
     @State private var operation = BusinessOperation()
     @State private var confirmingIncome = false
+    @State private var confirmingDelete = false
+
+    private var isEditing: Bool { package != nil }
+    private var usedLessons: Int {
+        guard let package else { return 0 }
+        return BusinessReports.used(package: package, uses: uses)
+    }
 
     init(clientID: UUID? = nil) {
+        self.package = nil
         _selectedClientID = State(initialValue: clientID)
+    }
+
+    init(package: LessonPackage) {
+        self.package = package
+        _selectedClientID = State(initialValue: package.clientID)
+        _purchasedOn = State(initialValue: package.purchasedOn)
+        _price = State(initialValue: BusinessFormatting.editableMoney(package.priceCents))
+        _capacity = State(initialValue: package.capacity)
+        _hasExpiry = State(initialValue: package.expiresOn != nil)
+        _expiry = State(initialValue: package.expiresOn ?? Date())
+        _notes = State(initialValue: package.notes)
     }
 
     var body: some View {
@@ -117,15 +138,23 @@ struct PackageEditor: View {
                 } else {
                     Form {
                         Section("Pacchetto personale") {
-                            BusinessClientPicker(title: "Cliente attivo", clients: clients.filter { !$0.isArchived },
-                                                 selection: $selectedClientID)
-                                .accessibilityIdentifier("package.client")
-                            if clients.allSatisfy(\.isArchived) {
-                                Text("Aggiungi o riattiva un cliente nell'anagrafica per assegnare un pacchetto.")
-                                    .font(.caption).foregroundStyle(.orange)
+                            if isEditing {
+                                LabeledContent("Cliente", value: package?.clientName ?? "")
+                            } else {
+                                BusinessClientPicker(title: "Cliente attivo", clients: clients.filter { !$0.isArchived },
+                                                     selection: $selectedClientID)
+                                    .accessibilityIdentifier("package.client")
+                                if clients.allSatisfy(\.isArchived) {
+                                    Text("Aggiungi o riattiva un cliente nell'anagrafica per assegnare un pacchetto.")
+                                        .font(.caption).foregroundStyle(.orange)
+                                }
                             }
-                            Stepper("Lezioni incluse: \(capacity)", value: $capacity, in: 1...1000)
+                            Stepper("Lezioni incluse: \(capacity)", value: $capacity, in: max(1, usedLessons)...1000)
                                 .accessibilityIdentifier("package.capacity")
+                            if isEditing && usedLessons > 0 {
+                                Text("Sono già state utilizzate \(usedLessons) lezioni: il minimo non può scendere sotto questo valore.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                             HStack {
                                 Text("Selezione rapida")
                                 Spacer()
@@ -148,21 +177,40 @@ struct PackageEditor: View {
                             TextField("Note (facoltative)", text: $notes, axis: .vertical).lineLimit(3...6)
                         }
                         Section {
-                            Text("La registrazione contabilizza subito il prezzo totale come incasso alla data di acquisto. Verifica importo e data prima di confermare.")
-                            Text("Le lezioni sono scalate al completamento degli appuntamenti, senza ulteriori incassi. Nessun rinnovo automatico.")
+                            if isEditing {
+                                Text("Le modifiche a prezzo e data aggiornano anche l'incasso registrato all'acquisto. Le lezioni già utilizzate restano invariate.")
+                            } else {
+                                Text("La registrazione contabilizza subito il prezzo totale come incasso alla data di acquisto. Verifica importo e data prima di confermare.")
+                                Text("Le lezioni sono scalate al completamento degli appuntamenti, senza ulteriori incassi. Nessun rinnovo automatico.")
+                            }
                         }
                         .font(.caption).foregroundStyle(.secondary)
+                        if isEditing {
+                            Section {
+                                Button("Elimina pacchetto", systemImage: "trash", role: .destructive) {
+                                    confirmingDelete = true
+                                }
+                                .disabled(operation.committed || usedLessons > 0)
+                                .accessibilityIdentifier("package.delete")
+                            } footer: {
+                                Text(usedLessons > 0
+                                     ? "Non eliminabile: ha lezioni già utilizzate. L'eliminazione altererebbe lo storico delle sedute completate."
+                                     : "L'eliminazione rimuove il pacchetto e l'incasso registrato all'acquisto. Operazione consentita solo senza lezioni utilizzate.")
+                            }
+                        }
                     }
                     .formStyle(.grouped)
                 }
             }
-            .navigationTitle("Assegna pacchetto")
+            .navigationTitle(isEditing ? "Modifica pacchetto" : "Assegna pacchetto")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Annulla") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Registra") { validateForConfirmation() }
+                    Button(isEditing ? "Salva" : "Registra") {
+                        if isEditing { save() } else { validateForConfirmation() }
+                    }
                         .keyboardShortcut(.defaultAction)
                         .disabled(operation.committed || _clients.fetchError != nil)
                         .accessibilityIdentifier("package.save")
@@ -172,7 +220,8 @@ struct PackageEditor: View {
         .businessEditorSize()
         .interactiveDismissDisabled()
         .onAppear {
-            if let selectedClientID, !clients.contains(where: { $0.id == selectedClientID && !$0.isArchived }) {
+            if !isEditing, let selectedClientID,
+               !clients.contains(where: { $0.id == selectedClientID && !$0.isArchived }) {
                 self.selectedClientID = nil
             }
         }
@@ -183,6 +232,12 @@ struct PackageEditor: View {
             Button("Annulla", role: .cancel) {}
         } message: {
             Text("Verrà registrato un incasso di \(price) € alla data di acquisto. Non è un trasferimento di denaro.")
+        }
+        .confirmationDialog("Eliminare il pacchetto?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Elimina pacchetto", role: .destructive, action: delete)
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("Verranno rimossi il pacchetto e l'incasso registrato all'acquisto. L'operazione non può essere annullata.")
         }
     }
 
@@ -199,15 +254,28 @@ struct PackageEditor: View {
 
     private func save() {
         do {
-            guard let selectedClientID else { throw BusinessInputError(message: "Seleziona un cliente attivo.") }
             var draft = PackageDraft()
-            draft.clientID = selectedClientID
+            if let package {
+                draft.id = package.id
+                draft.clientID = package.clientID
+            } else {
+                guard let selectedClientID else { throw BusinessInputError(message: "Seleziona un cliente attivo.") }
+                draft.clientID = selectedClientID
+            }
             draft.priceCents = try Money.parse(price)
             draft.capacity = capacity
             draft.purchasedOn = Calendar.current.startOfDay(for: purchasedOn)
             draft.expiresOn = hasExpiry ? Calendar.current.startOfDay(for: expiry) : nil
             draft.notes = notes
             _ = try BusinessRepository(context: context).savePackage(draft)
+            dismiss()
+        } catch { operation.capture(error) }
+    }
+
+    private func delete() {
+        guard let package else { return }
+        do {
+            try BusinessRepository(context: context).deletePackage(package.id)
             dismiss()
         } catch { operation.capture(error) }
     }
@@ -218,6 +286,7 @@ struct PackageDetailView: View {
     @Query private var uses: [PackageUse]
     @Query private var sessions: [TrainingSession]
     @Query private var participants: [SessionParticipant]
+    @State private var editing = false
 
     private var packageUses: [PackageUse] {
         var seen = Set<UUID>()
@@ -274,5 +343,12 @@ struct PackageDetailView: View {
         }
         .navigationTitle("Pacchetto · \(package.clientName)")
         .accessibilityIdentifier("package.detail")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Modifica") { editing = true }
+                    .accessibilityIdentifier("package.edit")
+            }
+        }
+        .sheet(isPresented: $editing) { PackageEditor(package: package) }
     }
 }

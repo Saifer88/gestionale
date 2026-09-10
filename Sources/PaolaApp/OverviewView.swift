@@ -29,7 +29,7 @@ struct OverviewView: View {
                 }
             }
         }
-        .navigationTitle("Panoramica")
+        .sectionTitle(.overview)
         .sheet(isPresented: $creatingSession) { SessionEditor() }
         .sheet(isPresented: $creatingPackage) { PackageEditor() }
     }
