@@ -267,7 +267,26 @@ struct AgendaView: View {
                 .accessibilityLabel("Conferma appuntamento provvisorio")
                 .accessibilityIdentifier("session.confirmProvisional")
             }
+            paidToggle(for: session)
         }
+    }
+
+    /// Interruttore "pagato" a icona: attiva/disattiva il contrassegno di pagamento
+    /// dell'appuntamento, senza aprire altre schermate e senza toccare i movimenti.
+    @ViewBuilder private func paidToggle(for session: TrainingSession) -> some View {
+        Button {
+            togglePaid(session)
+        } label: {
+            Image(systemName: session.isPaid ? "eurosign.circle.fill" : "eurosign.circle")
+                .font(.callout)
+                .foregroundStyle(session.isPaid ? Color.green : Color.secondary)
+                .padding(4)
+                .background((session.isPaid ? Color.green : Color.secondary).opacity(0.15), in: Circle())
+        }
+        .buttonStyle(.borderless)
+        .help(session.isPaid ? "Segnato come pagato. Tocca per annullare." : "Segna come pagato.")
+        .accessibilityLabel(session.isPaid ? "Pagato" : "Non pagato")
+        .accessibilityIdentifier("session.paidToggle")
     }
 
     /// Maniglia di ancoraggio per il trascinamento di un appuntamento. È l'unico
@@ -295,6 +314,12 @@ struct AgendaView: View {
     private func confirmProvisional(_ session: TrainingSession) {
         guard session.status == .provisional else { return }
         do { try BusinessRepository(context: context).setSessionStatus(session.id, to: .planned) }
+        catch { operation.capture(error) }
+    }
+
+    /// Attiva/disattiva il contrassegno "pagato" dell'appuntamento.
+    private func togglePaid(_ session: TrainingSession) {
+        do { try BusinessRepository(context: context).setSessionPaid(session.id, !session.isPaid) }
         catch { operation.capture(error) }
     }
 

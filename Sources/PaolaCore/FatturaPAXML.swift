@@ -67,7 +67,7 @@ public enum FatturaPAXMLBuilder {
     /// Stripe e carta -> MP08 (carta di pagamento); bonifico -> MP05; contanti -> MP01.
     static func paymentCode(_ method: PaymentMethod) -> String {
         switch method {
-        case .stripe, .card: return "MP08"
+        case .stripe, .card, .paypal: return "MP08"
         case .bankTransfer: return "MP05"
         case .cash: return "MP01"
         case .other: return "MP08"

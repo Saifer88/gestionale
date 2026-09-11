@@ -403,12 +403,14 @@ public struct BusinessArchive: Codable, Equatable {
         public var notes: String
         public var statusRaw: String
         public var invoiceDate: Date?
+        public var isPaid: Bool
         public var createdAt: Date
         public var updatedAt: Date
         public init(_ value: TrainingSession) {
             id = value.id; startDate = value.startDate; durationMinutes = value.durationMinutes
             serviceID = value.serviceID; serviceName = value.serviceName; location = value.location
             notes = value.notes; statusRaw = value.statusRaw; invoiceDate = value.invoiceDate
+            isPaid = value.isPaid
             createdAt = value.createdAt; updatedAt = value.updatedAt
         }
         public init(from decoder: Decoder) throws {
@@ -422,13 +424,14 @@ public struct BusinessArchive: Codable, Equatable {
             notes = try c.decode(String.self, forKey: .notes)
             statusRaw = try c.decode(String.self, forKey: .statusRaw)
             invoiceDate = try c.decodeIfPresent(Date.self, forKey: .invoiceDate)
+            isPaid = try c.decodeIfPresent(Bool.self, forKey: .isPaid) ?? false
             createdAt = try c.decode(Date.self, forKey: .createdAt)
             updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         }
         internal func model() -> TrainingSession {
             let value = TrainingSession(id: id, startDate: startDate, durationMinutes: durationMinutes,
                 serviceID: serviceID, serviceName: serviceName, location: location, notes: notes,
-                invoiceDate: invoiceDate, createdAt: createdAt, updatedAt: updatedAt)
+                invoiceDate: invoiceDate, isPaid: isPaid, createdAt: createdAt, updatedAt: updatedAt)
             value.statusRaw = statusRaw
             return value
         }

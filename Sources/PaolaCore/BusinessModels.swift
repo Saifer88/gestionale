@@ -30,7 +30,7 @@ public enum LedgerKind: String, CaseIterable, Identifiable, Codable {
 }
 
 public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable {
-    case cash, stripe, card, bankTransfer, other
+    case cash, stripe, card, bankTransfer, paypal, other
     public var id: String { rawValue }
     public var title: String {
         switch self {
@@ -38,12 +38,13 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
         case .stripe: return "Stripe"
         case .card: return "Carta"
         case .bankTransfer: return "Bonifico"
+        case .paypal: return "PayPal"
         case .other: return "Altro"
         }
     }
-    /// Metodi selezionabili dall'utente per gli incassi (contanti, Stripe, carta, bonifico).
-    /// "Altro" resta solo per i movimenti storici senza metodo indicato.
-    public static var selectable: [PaymentMethod] { [.cash, .stripe, .card, .bankTransfer] }
+    /// Metodi selezionabili dall'utente per gli incassi (contanti, Stripe, carta,
+    /// bonifico, PayPal). "Altro" resta solo per i movimenti storici senza metodo indicato.
+    public static var selectable: [PaymentMethod] { [.cash, .stripe, .card, .bankTransfer, .paypal] }
 }
 
 @Model public final class TrainingService {
@@ -73,6 +74,9 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     /// Data scelta per la fatturazione della lezione (schema V8). Opzionale: nil finché
     /// non viene emessa/prevista una fattura. Lo stato della fattura vive sull'entità Invoice.
     public var invoiceDate: Date?
+    /// Contrassegno manuale "pagato" dell'appuntamento (schema V9). Indipendente dai
+    /// movimenti economici e dalla fatturazione: è un promemoria per il trainer.
+    public var isPaid: Bool = false
     public var createdAt: Date = Date()
     public var updatedAt: Date = Date()
 
@@ -85,11 +89,12 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     public init(id: UUID = UUID(), startDate: Date = Date(), durationMinutes: Int = 60,
                 serviceID: UUID? = nil, serviceName: String = "", location: String = "",
                 notes: String = "", status: SessionStatus = .planned,
-                invoiceDate: Date? = nil,
+                invoiceDate: Date? = nil, isPaid: Bool = false,
                 createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id; self.startDate = startDate; self.durationMinutes = durationMinutes
         self.serviceID = serviceID; self.serviceName = serviceName; self.location = location
         self.notes = notes; self.statusRaw = status.rawValue; self.invoiceDate = invoiceDate
+        self.isPaid = isPaid
         self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }

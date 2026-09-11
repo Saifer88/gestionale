@@ -88,7 +88,7 @@ mai il contrario. `PaolaCore` non importa `PaolaApp` né SwiftUI.
 | `Client.swift` | Modello `Client` (`typealias Client = PaolaSchemaV7.Client`), `PaolaSchemaV1` e il **piano di migrazione** `PaolaSchemaMigrationPlan`. |
 | `ClientDraft/Repository/Search.swift` | Bozza, repository e ricerca/duplicati clienti. |
 | `ServiceRate.swift`, `AppointmentPreferences.swift`, `SchedulingSuggestions.swift` | Listino/tariffe, preferenze, proposte di giorni/orari liberi. |
-| `SchemaV2.swift` … `SchemaV8.swift` | Schemi SwiftData versionati (vedi §4). |
+| `SchemaV2.swift` … `SchemaV9.swift` | Schemi SwiftData versionati (vedi §4). |
 | `StoreFactory.swift` | `makeContainer(...)` (schema corrente + migration plan), URL dello store, store ripristinati. |
 | `CloudNamespace.swift` | Namespace archivio per account CloudKit. |
 | `BackupCipher.swift`, `ArchiveSnapshot.swift` | Backup cifrato (AES-256-GCM / PBKDF2) e snapshot di ripristino. |
@@ -124,35 +124,36 @@ mai il contrario. `PaolaCore` non importa `PaolaApp` né SwiftUI.
 ## 4. Persistenza SwiftData e migrazioni
 
 - Ogni versione dello schema è un `enum … : VersionedSchema` con `versionIdentifier`
-  `Schema.Version(N, 0, 0)` e l'elenco `models`. Schema corrente: **`PaolaSchemaV8`**
-  (introduce `Invoice` e il campo opzionale `invoiceDate` su `TrainingSession` e
-  `LessonPackage`).
+  `Schema.Version(N, 0, 0)` e l'elenco `models`. Schema corrente: **`PaolaSchemaV9`**
+  (aggiunge il flag `isPaid` a `TrainingSession`). V8 aveva introdotto `Invoice` e il
+  campo opzionale `invoiceDate` su `TrainingSession`/`LessonPackage`.
 - I tipi correnti (`TrainingSession`, `SessionParticipant`, …) vivono in
   `BusinessModels.swift`; gli schemi **precedenti congelano** le versioni storiche
   delle classi (es. `PaolaSchemaV7.TrainingSession`, `PaolaSchemaV5.LessonPackage`).
   Questo evita "Duplicate version checksums" / "backing data" durante le migrazioni.
-- Il piano è `PaolaSchemaMigrationPlan` (in `Client.swift`): `schemas` elenca V1→V8,
-  `stages` sono 7 migrazioni **`.lightweight`** consecutive.
+- Il piano è `PaolaSchemaMigrationPlan` (in `Client.swift`): `schemas` elenca V1→V9,
+  `stages` sono 8 migrazioni **`.lightweight`** consecutive.
 - Il container si crea in `StoreFactory.makeContainer(...)` con
-  `Schema(versionedSchema: PaolaSchemaV8.self)` e `migrationPlan:
+  `Schema(versionedSchema: PaolaSchemaV9.self)` e `migrationPlan:
   PaolaSchemaMigrationPlan.self`; `mainContext.autosaveEnabled = false`.
 - Store locale: `~/Library/Application Support/PaolaGestionale/Clienti-v1.store`
   (supporto a store ripristinati sotto `Restored/` via `UserDefaults`).
 
 ### Aggiungere un nuovo campo/entità (nuova versione schema)
 
-1. Crea `Sources/PaolaCore/SchemaV9.swift` con `enum PaolaSchemaV9: VersionedSchema`
-   (`versionIdentifier = Schema.Version(9,0,0)`, `models: [...]`). Riusa le classi
+1. Crea `Sources/PaolaCore/SchemaV10.swift` con `enum PaolaSchemaV10: VersionedSchema`
+   (`versionIdentifier = Schema.Version(10,0,0)`, `models: [...]`). Riusa le classi
    congelate delle versioni precedenti per i modelli **non** cambiati; introduci la
    nuova forma solo per i modelli modificati.
-2. Aggiorna i **tipi correnti** in `BusinessModels.swift` (nuovo campo/entità) e, se
-   necessario, congela in `SchemaV8` la versione storica della classe modificata.
-3. In `StoreFactory.makeContainer` cambia lo schema corrente a `PaolaSchemaV9.self`.
-4. In `PaolaSchemaMigrationPlan` aggiungi `PaolaSchemaV9.self` a `schemas` e lo stage
-   `.lightweight(fromVersion: PaolaSchemaV8.self, toVersion: PaolaSchemaV9.self)` a
+2. Aggiorna i **tipi correnti** in `BusinessModels.swift` (nuovo campo/entità) e
+   congela nella versione precedente (`SchemaV9`) la forma storica della classe
+   modificata (come fatto per `TrainingSession` in `SchemaV8`).
+3. In `StoreFactory.makeContainer` cambia lo schema corrente a `PaolaSchemaV10.self`.
+4. In `PaolaSchemaMigrationPlan` aggiungi `PaolaSchemaV10.self` a `schemas` e lo stage
+   `.lightweight(fromVersion: PaolaSchemaV9.self, toVersion: PaolaSchemaV10.self)` a
    `stages` (usa `.custom` solo se serve trasformare i dati).
 5. Aggiorna i test che verificano `schemas.count`/`stages.count` e i `versionIdentifier`
-   (in `StoreFactoryTests`), e i test store che devono usare `PaolaSchemaV9.self`.
+   (in `StoreFactoryTests`), e i test store che devono usare lo schema corrente.
 
 Un nuovo **valore di enum** (es. un nuovo `SessionStatus`) **non** richiede una nuova
 versione di schema: lo stato è salvato come stringa libera (`statusRaw`) con fallback,
@@ -321,7 +322,7 @@ PAOLA_RUN_TESTS=1 ./build-app.sh    # test + build dell'app
 
 - I test usano archivi **in memoria o cartelle temporanee isolate**, mai l'archivio
   dell'app e mai un account iCloud.
-- I test store devono usare lo **schema corrente** (`PaolaSchemaV8.self`).
+- I test store devono usare lo **schema corrente** (`PaolaSchemaV9.self`).
 - `BusinessError` **non** è `Equatable`: nei test usa `guard case BusinessError.x = error`.
 - Le aree ad alto rischio (regole economiche, migrazioni, idempotenza, saldi) vanno
   coperte quando si tocca il dominio.

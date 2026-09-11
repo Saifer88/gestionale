@@ -247,6 +247,17 @@ public final class BusinessRepository {
         }
     }
 
+    /// Imposta il contrassegno manuale "pagato" su un appuntamento. Non genera né
+    /// modifica movimenti economici: è solo un promemoria per il trainer.
+    public func setSessionPaid(_ id: UUID, _ paid: Bool) throws {
+        try transact { writer in
+            let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
+            if session.isPaid == paid { return }
+            session.isPaid = paid
+            session.updatedAt = Date()
+        }
+    }
+
     @discardableResult
     public func savePackage(_ draft: PackageDraft) throws -> UUID {
         try transact { writer in
