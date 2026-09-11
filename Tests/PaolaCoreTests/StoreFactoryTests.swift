@@ -133,7 +133,7 @@ final class StoreFactoryTests: XCTestCase {
                     anamnesis: "Anamnesi salvata", physicalAnalysis: "Analisi salvata"))
             }
             try autoreleasepool {
-                let schema = Schema(versionedSchema: PaolaSchemaV8.self)
+                let schema = Schema(versionedSchema: PaolaSchemaV9.self)
                 let configuration = ModelConfiguration(
                     "PaolaGestionale",
                     schema: schema,
