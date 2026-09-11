@@ -2,10 +2,11 @@ import Foundation
 import SwiftData
 
 public enum SessionStatus: String, CaseIterable, Identifiable, Codable {
-    case planned, completed, cancelled, noShow
+    case provisional, planned, completed, cancelled, noShow
     public var id: String { rawValue }
     public var title: String {
         switch self {
+        case .provisional: return "Provvisorio"
         case .planned: return "Programmata"
         case .completed: return "Completata"
         case .cancelled: return "Annullata"
@@ -245,6 +246,10 @@ public struct SessionDraft {
     public var location = ""
     public var notes = ""
     public var participants: [ParticipantDraft] = []
+    /// Stato con cui salvare l'appuntamento. Per un nuovo appuntamento vale
+    /// `.planned` (programmato) oppure `.provisional` (provvisorio). Per una
+    /// modifica lascia `nil` per conservare lo stato attuale.
+    public var status: SessionStatus?
     public init() {}
     public init(_ model: TrainingSession, participants: [SessionParticipant] = []) {
         id = model.id; startDate = model.startDate; durationMinutes = model.durationMinutes

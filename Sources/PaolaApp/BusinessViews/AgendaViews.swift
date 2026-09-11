@@ -31,14 +31,20 @@ private enum AgendaItem: Identifiable {
 }
 
 struct AgendaView: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \TrainingSession.startDate) private var sessions: [TrainingSession]
     @Query private var participants: [SessionParticipant]
     @Query private var clients: [Client]
+    @Query private var blocks: [Unavailability]
     @State private var period: AgendaPeriod = .week
     @State private var selectedDate = Date()
     @State private var status: SessionStatus?
     @State private var search = ""
     @State private var creatingSession = false
+    @State private var operation = BusinessOperation()
+    @State private var draggingSessionID: UUID?
+    /// Fascia oraria scelta per creare un appuntamento da una casella del calendario.
+    @State private var creationSlot: AgendaCreationSlot?
 
     private var interval: DateInterval {
         SchedulingSuggestions.calendar.dateInterval(of: period.component, for: selectedDate)
@@ -97,16 +103,30 @@ struct AgendaView: View {
             }
         }
         .sheet(isPresented: $creatingSession) { SessionEditor() }
+        .sheet(item: $creationSlot) { slot in
+            SessionEditor(startDate: slot.date)
+        }
+        .businessError($operation)
     }
 
     private var agenda: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Vista agenda", selection: $period) {
-                    ForEach(AgendaPeriod.allCases) { Text($0.rawValue).tag($0) }
+                HStack(alignment: .firstTextBaseline) {
+                    Picker("Vista agenda", selection: $period) {
+                        ForEach(AgendaPeriod.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("agenda.period")
+                    Spacer(minLength: 12)
+                    // Totale in € degli appuntamenti del periodo visualizzato, in alto a
+                    // destra, della stessa dimensione del nome del giorno (headline).
+                    Text(Money.format(totalCents))
+                        .font(.headline).monospacedDigit()
+                        .foregroundStyle(.primary)
+                        .accessibilityIdentifier("agenda.periodTotal")
+                        .accessibilityLabel("Totale del periodo \(Money.format(totalCents))")
                 }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("agenda.period")
                 HStack {
                     Button { move(-1) } label: { Image(systemName: "chevron.left") }
                         .accessibilityLabel("Periodo precedente")
@@ -123,6 +143,21 @@ struct AgendaView: View {
                 }
                 Text("\(visibleSessions.count) appuntamenti · \(scheduledMinutes / 60) h \(scheduledMinutes % 60) min")
                     .font(.caption).foregroundStyle(.secondary)
+                if draggingSessionID != nil {
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.draw")
+                        Text("Spostamento in corso: rilascia su un orario evidenziato.")
+                            .font(.caption)
+                        Spacer()
+                        Button("Annulla") { draggingSessionID = nil }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("agenda.cancelDrag")
+                    }
+                    .padding(8)
+                    .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                    .foregroundStyle(.secondary)
+                    .transition(.opacity)
+                }
             }
             .padding()
             Divider()
@@ -130,10 +165,6 @@ struct AgendaView: View {
                 weekColumns
             } else {
                 List {
-                    if visibleSessions.isEmpty {
-                        ContentUnavailableView("Agenda libera", systemImage: "calendar",
-                                               description: Text("Nessun appuntamento corrisponde al periodo e ai filtri."))
-                    }
                     ForEach(days, id: \.self) { day in daySection(day) }
                 }
             }
@@ -153,6 +184,15 @@ struct AgendaView: View {
             .reduce(0) { $0 + $1.durationMinutes }
     }
 
+    /// Somma in centesimi dei prezzi concordati dei partecipanti agli appuntamenti
+    /// visibili nel periodo (giorno/settimana/mese). Esclude gli annullati e le assenze.
+    private var totalCents: Int64 {
+        let visibleIDs = Set(visibleSessions.filter { $0.status != .cancelled && $0.status != .noShow }.map(\.id))
+        return participants
+            .filter { visibleIDs.contains($0.sessionID) }
+            .reduce(0) { $0 + $1.priceCents }
+    }
+
     private var weekColumns: some View {
         GeometryReader { geometry in
             let columns = weekDays
@@ -161,7 +201,7 @@ struct AgendaView: View {
             ScrollView([.horizontal, .vertical]) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(columns, id: \.self) { day in
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 8) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(SchedulingSuggestions.dayLabel(day)).font(.headline)
                                 if SchedulingSuggestions.calendar.isDateInToday(day) {
@@ -170,16 +210,10 @@ struct AgendaView: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .topLeading)
                             Divider()
-                            if items(on: day).isEmpty {
-                                Text("Nessun impegno").font(.caption).foregroundStyle(.secondary)
+                            ForEach(hourRows(on: day)) { row in
+                                hourCell(row, compact: true)
                             }
-                            ForEach(items(on: day)) { item in
-                                itemRow(item)
-                                    .buttonStyle(.plain)
-                                    .padding(10)
-                                    .background(.background, in: RoundedRectangle(cornerRadius: 10))
-                            }
-                            Spacer(minLength: 16)
+                            Spacer(minLength: 8)
                         }
                         .padding(12)
                         .frame(width: width, alignment: .topLeading)
@@ -207,10 +241,10 @@ struct AgendaView: View {
     }
 
     @ViewBuilder private func daySection(_ day: Date) -> some View {
-        let dayItems = items(on: day)
-        if !dayItems.isEmpty {
-            Section(BusinessFormatting.day(day)) {
-                ForEach(dayItems) { item in itemRow(item) }
+        Section(BusinessFormatting.day(day)) {
+            ForEach(hourRows(on: day)) { row in
+                hourCell(row, compact: false)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
             }
         }
     }
@@ -218,16 +252,179 @@ struct AgendaView: View {
     @ViewBuilder private func itemRow(_ item: AgendaItem) -> some View {
         switch item {
         case .session(let session):
-            NavigationLink {
-                SessionDetailView(session: session)
-            } label: {
-                CalendarSessionRow(
-                    session: session, participants: participants, clients: clients,
-                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
-                )
+            // Il pulsante di conferma resta FUORI dal NavigationLink: dentro l'etichetta
+            // di un NavigationLink un tocco aprirebbe comunque il dettaglio. Così invece
+            // conferma direttamente (provvisorio -> programmato) senza altre schermate.
+            HStack(alignment: .center, spacing: 8) {
+                if session.status != .completed {
+                    // Maniglia di trascinamento: il drag parte da qui, così toccare il
+                    // resto della card apre il dettaglio senza spostare l'appuntamento.
+                    dragHandle(for: session)
+                }
+                NavigationLink {
+                    SessionDetailView(session: session)
+                } label: {
+                    CalendarSessionRow(
+                        session: session, participants: participants, clients: clients,
+                        conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
+                    )
+                }
+                .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
+                if session.status == .provisional {
+                    // L'icona arancione (badge provvisorio) conferma l'appuntamento
+                    // rendendolo programmato, direttamente e senza altre schermate.
+                    Button {
+                        confirmProvisional(session)
+                    } label: {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .padding(4)
+                            .background(Color.orange.opacity(0.18), in: Circle())
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Conferma l'appuntamento provvisorio (lo rende programmato).")
+                    .accessibilityLabel("Conferma appuntamento provvisorio")
+                    .accessibilityIdentifier("session.confirmProvisional")
+                }
             }
-            .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
         }
+    }
+
+    /// Maniglia di ancoraggio per il trascinamento di un appuntamento. È l'unico
+    /// elemento trascinabile della riga: prendendola si sposta l'appuntamento nel
+    /// calendario, mentre il resto della card resta dedicato all'apertura del dettaglio.
+    @ViewBuilder private func dragHandle(for session: TrainingSession) -> some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.title3)
+            .foregroundStyle(.secondary)
+            .frame(width: 32, height: 32)
+            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+            // onDrag con NSItemProvider è più affidabile di .draggable dentro le liste
+            // e le viste con scorrimento. All'avvio segnala l'inizio del trascinamento.
+            .onDrag {
+                draggingSessionID = session.id
+                return AgendaDragPayload.provider(for: session.id)
+            }
+            .help("Trascina per spostare l'appuntamento")
+            .accessibilityLabel("Sposta appuntamento")
+            .accessibilityIdentifier("agenda.dragHandle.\(session.id.uuidString)")
+    }
+
+    /// Conferma un appuntamento provvisorio rendendolo programmato.
+    private func confirmProvisional(_ session: TrainingSession) {
+        guard session.status == .provisional else { return }
+        do { try BusinessRepository(context: context).setSessionStatus(session.id, to: .planned) }
+        catch { operation.capture(error) }
+    }
+
+    // MARK: - Drag & drop
+
+    private func session(_ id: UUID) -> TrainingSession? { sessions.first { $0.id == id } }
+
+    /// Righe orarie (7–21) di un giorno per la griglia del calendario. Applica il
+    /// filtro stato/ricerca corrente agli appuntamenti mostrati.
+    private func hourRows(on day: Date) -> [AgendaHourRow] {
+        let dragged = draggingSessionID.flatMap { session($0) }
+        return AgendaScheduling.hourRows(
+            on: day,
+            draggedSessionID: draggingSessionID,
+            draggedDurationMinutes: dragged?.durationMinutes ?? 60,
+            sessions: visibleSessions,
+            blocks: blocks)
+    }
+
+    /// Casella di una fascia oraria: mostra l'orario, gli appuntamenti che iniziano
+    /// in quell'ora (trascinabili) e, se vuota, un pulsante "+" per creare un nuovo
+    /// appuntamento con data e ora già impostate. Durante il trascinamento diventa
+    /// bersaglio di rilascio nella propria posizione oraria.
+    @ViewBuilder private func hourCell(_ row: AgendaHourRow, compact: Bool) -> some View {
+        let dragging = draggingSessionID != nil
+        HStack(alignment: .top, spacing: 10) {
+            Text(row.hourLabel)
+                .font(.caption.weight(.semibold)).monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(row.sessions) { session in
+                    itemRow(.session(session))
+                        .buttonStyle(.plain)
+                        .padding(10)
+                        .background(.background, in: RoundedRectangle(cornerRadius: 10))
+                }
+                if row.isEmpty {
+                    emptyHourContent(row, dragging: dragging)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 2)
+        .modifier(HourDropModifier(row: row, dragging: dragging, onDrop: { drop(sessionID: $0, on: row) }))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("agenda.hourCell.\(SchedulingSuggestions.calendar.component(.weekday, from: row.start)).\(row.hour)")
+    }
+
+    /// Contenuto della fascia vuota: durante il drag mostra un bersaglio di rilascio,
+    /// altrimenti il pulsante "+" per creare un appuntamento a quell'ora.
+    @ViewBuilder private func emptyHourContent(_ row: AgendaHourRow, dragging: Bool) -> some View {
+        if dragging {
+            let occupied = row.occupantID != nil
+            // Solo icona, nessun testo: frecce opposte per "sposta qui", scambio per
+            // una fascia occupata, lucchetto per una non disponibile.
+            Image(systemName: occupied ? "arrow.left.arrow.right" : (row.isFree ? "arrow.up.arrow.down" : "lock"))
+                .font(.callout.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .background(dropColor(row), in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(occupied ? Color.orange : (row.isFree ? Color.green : Color.secondary))
+                .accessibilityLabel(occupied ? "Scambia con l'appuntamento a quest'ora"
+                                    : (row.isFree ? "Sposta a quest'ora" : "Fascia non disponibile"))
+        } else {
+            Button {
+                creationSlot = AgendaCreationSlot(date: row.start)
+            } label: {
+                Label("Aggiungi", systemImage: "plus")
+                    .font(.caption)
+                    .labelStyle(.iconOnly)
+                    .frame(maxWidth: .infinity, minHeight: 30)
+                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Nuovo appuntamento alle \(row.hourLabel)")
+            .accessibilityLabel("Nuovo appuntamento alle \(row.hourLabel)")
+            .accessibilityIdentifier("agenda.addAt.\(SchedulingSuggestions.calendar.component(.weekday, from: row.start)).\(row.hour)")
+        }
+    }
+
+    private func dropColor(_ row: AgendaHourRow) -> Color {
+        if row.occupantID != nil { return Color.orange.opacity(0.16) }
+        return row.isFree ? Color.green.opacity(0.16) : Color.secondary.opacity(0.10)
+    }
+
+    /// Rilascio dell'appuntamento su una fascia oraria: sposta all'ora scelta oppure,
+    /// se la fascia è occupata da un altro appuntamento, ne scambia gli orari.
+    private func drop(sessionID: UUID, on row: AgendaHourRow) {
+        draggingSessionID = nil
+        guard let dragged = session(sessionID) else { return }
+        if dragged.startDate == row.start { return }
+        let repository = BusinessRepository(context: context)
+        do {
+            if let occupantID = row.occupantID, occupantID != sessionID,
+               let occupant = session(occupantID) {
+                // Scambio di posto: i due appuntamenti si scambiano l'orario di inizio.
+                let draggedStart = dragged.startDate
+                let occupantStart = occupant.startDate
+                try repository.rescheduleSession(sessionID, to: occupantStart, allowOverlap: true)
+                try repository.rescheduleSession(occupantID, to: draggedStart, allowOverlap: true)
+            } else {
+                // Spostamento su fascia libera. Gli overlap residui non bloccano lo
+                // spostamento manuale (le fasce occupate portano allo scambio).
+                try repository.rescheduleSession(sessionID, to: row.start, allowOverlap: true)
+            }
+        } catch { operation.capture(error) }
     }
 
     private func move(_ direction: Int) {

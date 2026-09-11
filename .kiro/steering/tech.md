@@ -38,6 +38,13 @@ xcrun swift test
 I test usano archivi in memoria o cartelle temporanee isolate, mai l'archivio
 dell'app e mai un account iCloud.
 
+> **Non eseguire i test automaticamente dopo aver sviluppato una funzionalità.**
+> La suite è lenta e spesso non si avvia nell'ambiente dell'agente: eseguirla fa
+> perdere tempo senza dare un esito affidabile. Verifica il lavoro con la sola
+> compilazione (`xcrun swift build` o `./build-app.sh`). Esegui `xcrun swift test`
+> solo quando l'utente lo chiede esplicitamente o prima di preparare una release
+> (in quel caso: `PAOLA_RUN_TESTS=1 ./build-app.sh`).
+
 ### Build locale macOS (Debug + firma ad hoc)
 
 ```bash

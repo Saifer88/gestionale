@@ -83,6 +83,7 @@ struct SessionStatusLabel: View {
 
     private var color: Color {
         switch status {
+        case .provisional: return .orange
         case .planned: return .blue
         case .completed: return .teal
         case .cancelled, .noShow: return .secondary
@@ -91,6 +92,7 @@ struct SessionStatusLabel: View {
 
     private var icon: String {
         switch status {
+        case .provisional: return "calendar.badge.clock"
         case .planned: return "calendar"
         case .completed: return "checkmark.circle.fill"
         case .cancelled: return "xmark.circle"

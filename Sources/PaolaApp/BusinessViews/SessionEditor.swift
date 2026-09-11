@@ -15,6 +15,9 @@ struct SessionEditor: View {
     @Query private var blocks: [Unavailability]
     @Query private var preferences: [ClientAppointmentPreference]
     private let session: TrainingSession?
+    /// Data/ora preimpostata alla creazione (dal "+" di una casella oraria del
+    /// calendario): va conservata anche quando si applicano le preferenze cliente.
+    private let presetStartDate: Date?
     @State private var draft: SessionDraft
     @State private var clientID: UUID?
     @State private var packageID: UUID?
@@ -27,8 +30,9 @@ struct SessionEditor: View {
     @State private var notices: [String] = []
     @State private var operation = BusinessOperation()
 
-    init(session: TrainingSession? = nil, clientID: UUID? = nil) {
+    init(session: TrainingSession? = nil, clientID: UUID? = nil, startDate: Date? = nil) {
         self.session = session
+        self.presetStartDate = session == nil ? startDate : nil
         var value = SessionDraft()
         if let session {
             value.id = session.id
@@ -38,6 +42,10 @@ struct SessionEditor: View {
             value.serviceName = session.serviceName
             value.location = session.location
             value.notes = session.notes
+        } else if let startDate {
+            // Nuovo appuntamento con data e ora già impostate (creazione da una casella
+            // oraria del calendario).
+            value.startDate = startDate
         }
         _draft = State(initialValue: value)
         _clientID = State(initialValue: clientID)
@@ -47,6 +55,9 @@ struct SessionEditor: View {
         participants.filter { $0.sessionID == session?.id }.sorted { $0.id.uuidString < $1.id.uuidString }
     }
     private var readOnly: Bool { session?.status == .completed }
+    private var cannotSave: Bool {
+        readError != nil || operation.committed || clientID == nil || draft.serviceID == nil
+    }
     private var readError: Error? {
         let errors: [Error?] = [
             _clients.fetchError, _services.fetchError, _participants.fetchError, _packages.fetchError,
@@ -86,18 +97,15 @@ struct SessionEditor: View {
                     editorForm
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                if !readOnly && readError == nil {
+                    saveBar
+                }
+            }
             .navigationTitle(session == nil ? "Nuovo appuntamento" : "Appuntamento")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(readOnly ? "Chiudi" : "Annulla") { dismiss() }.keyboardShortcut(.cancelAction)
-                }
-                if !readOnly {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Salva") { save() }
-                            .keyboardShortcut(.defaultAction)
-                            .disabled(readError != nil || operation.committed || clientID == nil || draft.serviceID == nil)
-                            .accessibilityIdentifier("session.save")
-                    }
                 }
             }
         }
@@ -117,6 +125,28 @@ struct SessionEditor: View {
             Text("L'orario scelto manualmente coincide con un appuntamento o un'indisponibilità. La sovrapposizione resterà segnalata.")
         }
         .businessError($operation, onCommitted: { dismiss() })
+    }
+
+    /// Barra di salvataggio sempre visibile in fondo all'editor.
+    /// Sia in creazione sia in modifica: "Provvisorio" (arancione) e "Programma"
+    /// (in evidenza). "Programma" salva l'appuntamento come programmato.
+    @ViewBuilder private var saveBar: some View {
+        HStack(spacing: 12) {
+            Button("Provvisorio") { save(asProvisional: true) }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .disabled(cannotSave)
+                .accessibilityIdentifier("session.saveProvisional")
+            Button("Programma") { save() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(cannotSave)
+                .accessibilityIdentifier("session.save")
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .background(.bar)
     }
 
     private var editorForm: some View {
@@ -306,7 +336,13 @@ struct SessionEditor: View {
             draft.serviceID = selected.serviceID
             draft.serviceName = services.first { $0.id == selected.serviceID }?.name ?? ""
             draft.durationMinutes = selected.durationMinutes
-            draft.startDate = selected.startDate
+            // Se l'utente ha aperto l'editor da una casella oraria, mantieni la data e
+            // l'ora scelte; altrimenti proponi l'orario preferito del cliente.
+            if let presetStartDate {
+                draft.startDate = presetStartDate
+            } else {
+                draft.startDate = selected.startDate
+            }
             rateID = selected.rateID
             price = BusinessFormatting.editableMoney(selected.priceCents)
             packageID = selected.packageID
@@ -378,13 +414,17 @@ struct SessionEditor: View {
         }
     }
 
-    private func save(allowOverlap: Bool = false) {
+    private func save(asProvisional: Bool = false, allowOverlap: Bool = false) {
         guard !readOnly, !operation.committed else { return }
         do {
             guard let clientID, let serviceID = draft.serviceID,
                   let service = selectableServices.first(where: { $0.id == serviceID }) else {
                 throw BusinessInputError(message: "Seleziona un cliente e un servizio.")
             }
+            // Stato di salvataggio: provvisorio se richiesto, altrimenti programmato per
+            // un nuovo appuntamento; "Programma" salva sempre come programmato, sia in
+            // creazione sia in modifica (così i due tasti si comportano allo stesso modo).
+            draft.status = asProvisional ? .provisional : .planned
             if session?.serviceID != serviceID || session == nil { draft.serviceName = service.name }
             draft.participants = [ParticipantDraft(
                 clientID: clientID, priceCents: try Money.parse(price), packageID: packageID, tariffID: rateID,

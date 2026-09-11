@@ -81,3 +81,7 @@ Ogni nuova regola economica, di scheduling o di validazione va qui, con test ass
 - Test isolati: archivi in memoria o cartelle temporanee, mai l'archivio dell'app né iCloud.
 - Non aggiungere test automaticamente se non richiesto, ma le regole economiche e le
   migrazioni sono aree ad alto rischio: coprire idempotenza, saldi e migrazioni quando si tocca il dominio.
+- **Non eseguire i test dopo aver sviluppato una funzionalità.** La suite è lenta e
+  spesso non parte nell'ambiente dell'agente: lanciarla fa perdere tempo senza esito
+  affidabile. Verifica con la sola compilazione (`xcrun swift build` o `./build-app.sh`)
+  ed esegui `xcrun swift test` solo se l'utente lo chiede o prima di una release.

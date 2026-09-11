@@ -112,7 +112,13 @@ public final class BusinessRepository {
                   Set(draft.participants.map(\.clientID)).count == draft.participants.count else {
                 throw BusinessError.invalidInput("Selezionare almeno un cliente, senza partecipanti duplicati.")
             }
-            if !allowOverlap, session.status == .planned {
+            // Stato finale: per una nuova sessione si usa lo stato richiesto dalla bozza
+            // (programmato di default, o provvisorio); in modifica si conserva lo stato
+            // corrente se la bozza non lo cambia.
+            let targetStatus = draft.status ?? (draft.id == nil ? .planned : session.status)
+            // La sovrapposizione è bloccante solo per gli appuntamenti programmati.
+            // Un appuntamento provvisorio è una prenotazione tentativa: non blocca.
+            if !allowOverlap, targetStatus == .planned {
                 try checkOverlap(start: draft.startDate, end: endDate, excludingSession: session.id, in: writer)
             }
             var serviceName = draft.serviceName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -154,6 +160,11 @@ public final class BusinessRepository {
             session.serviceID = draft.serviceID; session.serviceName = serviceName
             session.location = draft.location.trimmingCharacters(in: .whitespacesAndNewlines)
             session.notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Applica lo stato solo tra provvisorio e programmato: gli stati economici
+            // (completata) o di chiusura (annullata/assenza) si gestiscono da setSessionStatus.
+            if targetStatus == .provisional || targetStatus == .planned {
+                session.status = targetStatus
+            }
             session.updatedAt = Date()
             participants.forEach { writer.insert($0) }
             let preferences = try writer.fetch(FetchDescriptor<ClientAppointmentPreference>())
@@ -209,6 +220,29 @@ public final class BusinessRepository {
                 }
             }
             session.status = status
+            session.updatedAt = Date()
+        }
+    }
+
+    /// Sposta un appuntamento a un nuovo orario di inizio mantenendone la durata.
+    /// Usato dal trascinamento (drag & drop) nel calendario.
+    ///
+    /// - Le lezioni completate sono congelate e non si spostano (regola di prodotto).
+    /// - La sovrapposizione è bloccante solo per gli appuntamenti programmati; per i
+    ///   provvisori è ammessa (prenotazione tentativa). Con `allowOverlap` si forza.
+    public func rescheduleSession(_ id: UUID, to startDate: Date, allowOverlap: Bool = false) throws {
+        try transact { writer in
+            let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
+            guard session.status != .completed else { throw BusinessError.completedSessionLocked }
+            try BusinessRules.date(startDate)
+            let end = startDate.addingTimeInterval(Double(session.durationMinutes) * 60)
+            try BusinessRules.date(end)
+            // Niente da fare se l'orario non cambia (evita salvataggi inutili).
+            if session.startDate == startDate { return }
+            if !allowOverlap, session.status == .planned {
+                try checkOverlap(start: startDate, end: end, excludingSession: id, in: writer)
+            }
+            session.startDate = startDate
             session.updatedAt = Date()
         }
     }
