@@ -14,22 +14,6 @@ private enum AgendaPeriod: String, CaseIterable, Identifiable {
     }
 }
 
-private enum AgendaItem: Identifiable {
-    case session(TrainingSession)
-
-    var id: String {
-        switch self {
-        case .session(let session): return "session-\(session.id)"
-        }
-    }
-
-    var startDate: Date {
-        switch self {
-        case .session(let session): return session.startDate
-        }
-    }
-}
-
 struct AgendaView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \TrainingSession.startDate) private var sessions: [TrainingSession]
@@ -76,7 +60,16 @@ struct AgendaView: View {
         return days.filter { day in
             let weekday = calendar.component(.weekday, from: day)
             let isWeekend = (weekday == 7 || weekday == 1) // 7 = sabato, 1 = domenica
-            return !isWeekend || !items(on: day).isEmpty
+            return !isWeekend || hasSessions(on: day)
+        }
+    }
+
+    /// Vero se il giorno ha almeno un appuntamento visibile (usato per mostrare o
+    /// nascondere le colonne del weekend nella vista settimana).
+    private func hasSessions(on day: Date) -> Bool {
+        let dayEnd = BusinessDates.exclusiveEnd(day)
+        return visibleSessions.contains {
+            BusinessDates.overlaps(day, dayEnd, $0.startDate, $0.endDate)
         }
     }
 
@@ -229,17 +222,6 @@ struct AgendaView: View {
         }
     }
 
-    private func items(on day: Date) -> [AgendaItem] {
-        let dayEnd = BusinessDates.exclusiveEnd(day)
-        let daySessions = visibleSessions.filter {
-            BusinessDates.overlaps(day, dayEnd, $0.startDate, $0.endDate)
-        }
-        return daySessions.map { AgendaItem.session($0) }.sorted { left, right in
-            if left.startDate == right.startDate { return left.id < right.id }
-            return left.startDate < right.startDate
-        }
-    }
-
     @ViewBuilder private func daySection(_ day: Date) -> some View {
         Section(BusinessFormatting.day(day)) {
             ForEach(hourRows(on: day)) { row in
@@ -249,44 +231,41 @@ struct AgendaView: View {
         }
     }
 
-    @ViewBuilder private func itemRow(_ item: AgendaItem) -> some View {
-        switch item {
-        case .session(let session):
-            // Il pulsante di conferma resta FUORI dal NavigationLink: dentro l'etichetta
-            // di un NavigationLink un tocco aprirebbe comunque il dettaglio. Così invece
-            // conferma direttamente (provvisorio -> programmato) senza altre schermate.
-            HStack(alignment: .center, spacing: 8) {
-                if session.status != .completed {
-                    // Maniglia di trascinamento: il drag parte da qui, così toccare il
-                    // resto della card apre il dettaglio senza spostare l'appuntamento.
-                    dragHandle(for: session)
-                }
-                NavigationLink {
-                    SessionDetailView(session: session)
+    @ViewBuilder private func itemRow(_ session: TrainingSession) -> some View {
+        // Il pulsante di conferma resta FUORI dal NavigationLink: dentro l'etichetta
+        // di un NavigationLink un tocco aprirebbe comunque il dettaglio. Così invece
+        // conferma direttamente (provvisorio -> programmato) senza altre schermate.
+        HStack(alignment: .center, spacing: 8) {
+            if session.status != .completed {
+                // Maniglia di trascinamento: il drag parte da qui, così toccare il
+                // resto della card apre il dettaglio senza spostare l'appuntamento.
+                dragHandle(for: session)
+            }
+            NavigationLink {
+                SessionDetailView(session: session)
+            } label: {
+                CalendarSessionRow(
+                    session: session, participants: participants, clients: clients,
+                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
+                )
+            }
+            .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
+            if session.status == .provisional {
+                // L'icona arancione (badge provvisorio) conferma l'appuntamento
+                // rendendolo programmato, direttamente e senza altre schermate.
+                Button {
+                    confirmProvisional(session)
                 } label: {
-                    CalendarSessionRow(
-                        session: session, participants: participants, clients: clients,
-                        conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
-                    )
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .padding(4)
+                        .background(Color.orange.opacity(0.18), in: Circle())
                 }
-                .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
-                if session.status == .provisional {
-                    // L'icona arancione (badge provvisorio) conferma l'appuntamento
-                    // rendendolo programmato, direttamente e senza altre schermate.
-                    Button {
-                        confirmProvisional(session)
-                    } label: {
-                        Image(systemName: "calendar.badge.clock")
-                            .font(.callout)
-                            .foregroundStyle(.orange)
-                            .padding(4)
-                            .background(Color.orange.opacity(0.18), in: Circle())
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Conferma l'appuntamento provvisorio (lo rende programmato).")
-                    .accessibilityLabel("Conferma appuntamento provvisorio")
-                    .accessibilityIdentifier("session.confirmProvisional")
-                }
+                .buttonStyle(.borderless)
+                .help("Conferma l'appuntamento provvisorio (lo rende programmato).")
+                .accessibilityLabel("Conferma appuntamento provvisorio")
+                .accessibilityIdentifier("session.confirmProvisional")
             }
         }
     }
@@ -349,7 +328,7 @@ struct AgendaView: View {
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(row.sessions) { session in
-                    itemRow(.session(session))
+                    itemRow(session)
                         .buttonStyle(.plain)
                         .padding(10)
                         .background(.background, in: RoundedRectangle(cornerRadius: 10))

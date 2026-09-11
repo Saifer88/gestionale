@@ -119,10 +119,26 @@ final class StorageCoordinator: ObservableObject {
         generation = UUID()
         status = "Archivio locale ripristinato"
     }
+
+    /// Reset totale: cancella TUTTI i dati (clienti, servizi, pacchetti, appuntamenti,
+    /// movimenti, fatture), le credenziali Aruba dal Keychain e le impostazioni locali,
+    /// riportando l'app allo stato di prima installazione. Operazione non reversibile.
+    func resetEverything() throws {
+        guard let container else { throw StorageError.resetWithoutArchive }
+        // 1. Svuota l'archivio di dominio.
+        try StoreFactory.eraseAllData(in: container.mainContext)
+        // 2. Rimuove le credenziali Aruba dal Keychain.
+        try ArubaCredentialsStore(secrets: KeychainSecretStore()).clear()
+        // 3. Azzera profilo fiscale e preferenze salvate.
+        StoreFactory.clearUserDefaults()
+        // 4. Riapre l'archivio così la UI riparte pulita.
+        generation = UUID()
+        open()
+    }
 }
 
 enum StorageError: LocalizedError {
-    case invalidCloudConfiguration, unavailableAccount, restoreWhileCloudEnabled
+    case invalidCloudConfiguration, unavailableAccount, restoreWhileCloudEnabled, resetWithoutArchive
 
     var errorDescription: String? {
         switch self {
@@ -132,6 +148,8 @@ enum StorageError: LocalizedError {
             "Account iCloud non disponibile. Accedi nelle impostazioni del dispositivo e riprova."
         case .restoreWhileCloudEnabled:
             "Il ripristino sostitutivo e' disponibile solo nell'archivio locale, per evitare sovrascritture su iCloud."
+        case .resetWithoutArchive:
+            "Archivio non disponibile: impossibile eseguire il reset."
         }
     }
 }

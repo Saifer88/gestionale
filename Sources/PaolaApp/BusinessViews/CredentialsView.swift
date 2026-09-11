@@ -8,9 +8,18 @@ struct CredentialsView: View {
     @State private var username = ""
     @State private var password = ""
     @State private var saved = false
+    @State private var testState: CredentialsTestState = .idle
 
     private let profileStore = SellerProfileStore()
     private let credentialsStore = ArubaCredentialsStore(secrets: KeychainSecretStore())
+
+    /// Esito della prova di connessione ad Aruba.
+    private enum CredentialsTestState: Equatable {
+        case idle
+        case testing
+        case success
+        case failure(String)
+    }
 
     var body: some View {
         Form {
@@ -76,6 +85,38 @@ struct CredentialsView: View {
             } footer: {
                 Text("Salvate nel Keychain del dispositivo. \(AppEnvironment.usesArubaDemo ? "Questa build usa l'ambiente demo di Aruba." : "Questa build usa l'ambiente di produzione di Aruba.")")
             }
+
+            Section {
+                Button {
+                    Task { await testCredentials() }
+                } label: {
+                    HStack {
+                        if testState == .testing {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "checkmark.shield")
+                        }
+                        Text("Prova credenziali")
+                    }
+                }
+                .disabled(testState == .testing
+                          || username.trimmingCharacters(in: .whitespaces).isEmpty
+                          || password.isEmpty)
+                .accessibilityIdentifier("credentials.test")
+
+                switch testState {
+                case .success:
+                    Label("Autenticazione riuscita.", systemImage: "checkmark.circle.fill")
+                        .font(.caption).foregroundStyle(.green)
+                case .failure(let message):
+                    Label(message, systemImage: "xmark.octagon")
+                        .font(.caption).foregroundStyle(.red)
+                case .idle, .testing:
+                    EmptyView()
+                }
+            } footer: {
+                Text("Verifica username e password provando l'autenticazione all'ambiente \(AppEnvironment.usesArubaDemo ? "demo" : "di produzione") di Aruba, senza inviare alcuna fattura. L'autenticazione demo consente al massimo una prova al minuto.")
+            }
         }
         .formStyle(.grouped)
         .sectionTitle("Credenziali e fatturazione", symbol: "key")
@@ -103,5 +144,20 @@ struct CredentialsView: View {
         profile = profileStore.load()
         try? credentialsStore.save(ArubaCredentials(username: username, password: password))
         saved = true
+    }
+
+    /// Prova ad autenticarsi ad Aruba con le credenziali digitate (senza inviare fatture).
+    private func testCredentials() async {
+        testState = .testing
+        let credentials = ArubaCredentials(
+            username: username.trimmingCharacters(in: .whitespacesAndNewlines),
+            password: password
+        )
+        do {
+            try await ArubaClient(credentials: credentials).authenticate()
+            testState = .success
+        } catch {
+            testState = .failure(error.localizedDescription)
+        }
     }
 }

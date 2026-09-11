@@ -6,6 +6,8 @@ struct SettingsView: View {
     @AppStorage("reminders.enabled") private var remindersEnabled = false
     @AppStorage("reminders.minutesBefore") private var minutesBefore = 15
     @State private var notificationError: String?
+    @State private var confirmingReset = false
+    @State private var resetError: String?
 
     private static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
@@ -31,6 +33,16 @@ struct SettingsView: View {
                      : "Questa build salva solo sul dispositivo. Per iCloud servono container, capability e firma Apple, come descritto nel documento di progetto. Il semplice accesso allo stesso account non attiva la sincronizzazione.")
                     .font(.caption).foregroundStyle(.secondary)
                 NavigationLink { BackupView() } label: { Label("Backup e ripristino", systemImage: "externaldrive") }
+            }
+            Section {
+                Button(role: .destructive) {
+                    confirmingReset = true
+                } label: {
+                    Label("Reset totale dell'app", systemImage: "trash")
+                }
+                .accessibilityIdentifier("settings.reset")
+            } footer: {
+                Text("Cancella tutti i dati (clienti, servizi, pacchetti, appuntamenti, movimenti e fatture), le credenziali Aruba e le impostazioni. L'app torna come appena installata. Operazione non reversibile: esegui prima un backup.")
             }
             Section {
                 Toggle("Blocca l'app con autenticazione di sistema", isOn: $appLockEnabled)
@@ -75,5 +87,19 @@ struct SettingsView: View {
         .alert("Notifiche", isPresented: Binding(get: { notificationError != nil }, set: { if !$0 { notificationError = nil } })) {
             Button("OK", role: .cancel) { notificationError = nil }
         } message: { Text(notificationError ?? "") }
+        .confirmationDialog("Cancellare tutto e ripartire da zero?", isPresented: $confirmingReset, titleVisibility: .visible) {
+            Button("Cancella tutto", role: .destructive) { performReset() }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("Verranno eliminati definitivamente clienti, servizi, pacchetti, appuntamenti, movimenti e fatture, oltre a credenziali e impostazioni. L'operazione non è reversibile.")
+        }
+        .alert("Reset non riuscito", isPresented: Binding(get: { resetError != nil }, set: { if !$0 { resetError = nil } })) {
+            Button("OK", role: .cancel) { resetError = nil }
+        } message: { Text(resetError ?? "") }
+    }
+
+    private func performReset() {
+        do { try storage.resetEverything() }
+        catch { resetError = error.localizedDescription }
     }
 }
