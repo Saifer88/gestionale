@@ -20,6 +20,7 @@ struct AgendaView: View {
     @Query private var participants: [SessionParticipant]
     @Query private var clients: [Client]
     @Query private var blocks: [Unavailability]
+    @Query private var packages: [LessonPackage]
     @State private var period: AgendaPeriod = .week
     @State private var selectedDate = Date()
     @State private var status: SessionStatus?
@@ -181,9 +182,18 @@ struct AgendaView: View {
     /// visibili nel periodo (giorno/settimana/mese). Esclude gli annullati e le assenze.
     private var totalCents: Int64 {
         let visibleIDs = Set(visibleSessions.filter { $0.status != .cancelled && $0.status != .noShow }.map(\.id))
-        return participants
-            .filter { visibleIDs.contains($0.sessionID) }
-            .reduce(0) { $0 + $1.priceCents }
+        // Partecipanti agli appuntamenti visibili, ESCLUSI quelli coperti da un
+        // pacchetto: la loro lezione è già pagata con l'acquisto del pacchetto e non
+        // rappresenta un incasso della sessione.
+        let sessionsTotal = participants
+            .filter { visibleIDs.contains($0.sessionID) && $0.packageID == nil }
+            .reduce(Int64(0)) { $0 + $1.priceCents }
+        // Pacchetti acquistati nel periodo visualizzato: il loro valore ricade nella
+        // sezione dell'agenda in cui cade la data di acquisto.
+        let packagesTotal = packages
+            .filter { interval.start <= $0.purchasedOn && $0.purchasedOn < interval.end }
+            .reduce(Int64(0)) { $0 + $1.priceCents }
+        return sessionsTotal + packagesTotal
     }
 
     private var weekColumns: some View {
