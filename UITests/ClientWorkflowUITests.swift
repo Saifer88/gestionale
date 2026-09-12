@@ -548,6 +548,73 @@ final class ClientWorkflowUITests: XCTestCase {
     }
 
     @MainActor
+    func testCalendarBadgesAlignAndToggleWithoutOpeningAppointment() throws {
+        let app = testApplication()
+        app.launchArguments = ["-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
+        app.launch()
+        tap(app.buttons["overview.newClient"], in: app)
+        replace(app.textFields["client.firstName"], with: "Cliente")
+        replace(app.textFields["client.lastName"], with: "Badge")
+        app.buttons["client.save"].tap()
+        XCTAssertTrue(app.buttons["overview.newClient"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["Impostazioni"].tap()
+        app.buttons["Servizi e listino"].tap()
+        tap(app.buttons["services.new"], in: app)
+        replace(app.textFields["service.name"], with: "Servizio badge")
+        replace(app.textFields["service.price"], with: "50")
+        app.buttons["service.save"].tap()
+        XCTAssertTrue(app.buttons["services.new"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["Agenda"].tap()
+        app.segmentedControls.buttons["Giorno"].tap()
+        let slot = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@", "agenda.addAt."
+        )).firstMatch
+        tap(slot, in: app)
+        choose("session.client1", label: "Cliente Badge", in: app)
+        app.buttons["session.saveProvisional"].tap()
+        XCTAssertTrue(app.buttons["agenda.add"].waitForExistence(timeout: 5))
+
+        let accounting = app.buttons["session.accountingDot"].firstMatch
+        let provisional = app.buttons["session.confirmProvisional"].firstMatch
+        let paid = app.buttons["session.paidToggle"].firstMatch
+        reveal(paid, in: app)
+        XCTAssertTrue(accounting.isHittable)
+        XCTAssertTrue(provisional.isHittable)
+        XCTAssertEqual(accounting.frame.midX, provisional.frame.midX, accuracy: 1)
+        XCTAssertEqual(accounting.frame.midX, paid.frame.midX, accuracy: 1)
+        XCTAssertEqual(accounting.label, "Contabilità: nero")
+        XCTAssertEqual(paid.label, "Non pagato")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Badge contabile, provvisorio e pagamento allineati"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        accounting.tap()
+        XCTAssertEqual(accounting.label, "Contabilità: bianco")
+        paid.tap()
+        XCTAssertEqual(paid.label, "Pagato")
+        provisional.tap()
+        XCTAssertFalse(provisional.exists)
+        XCTAssertTrue(app.buttons["agenda.add"].exists)
+        XCTAssertEqual(accounting.frame.midX, paid.frame.midX, accuracy: 1)
+
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["Agenda"].tap()
+        app.segmentedControls.buttons["Giorno"].tap()
+        reveal(paid, in: app)
+        XCTAssertEqual(accounting.label, "Contabilità: bianco")
+        XCTAssertEqual(paid.label, "Pagato")
+        XCTAssertFalse(provisional.exists)
+        paid.tap()
+        accounting.tap()
+        XCTAssertEqual(paid.label, "Non pagato")
+        XCTAssertEqual(accounting.label, "Contabilità: nero")
+    }
+
+    @MainActor
     private func metric(_ identifier: String, contains value: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(
             format: "identifier == %@ AND label CONTAINS %@", identifier, value

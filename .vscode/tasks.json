@@ -1,0 +1,29 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Test SwiftPM",
+			"type": "shell",
+			"command": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test --scratch-path build/test-validation",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Test UI calendario",
+			"type": "shell",
+			"command": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project PaolaGestionale.xcodeproj -scheme PaolaGestionale-iOS-UI -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build/DerivedData-iOS -parallel-testing-enabled NO -only-testing:PaolaGestionaleUITests/ClientWorkflowUITests/testCalendarBadgesAlignAndToggleWithoutOpeningAppointment CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Test UI",
+			"type": "shell",
+			"command": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project PaolaGestionale.xcodeproj -scheme PaolaGestionale-iOS-UI -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build/DerivedData-iOS -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		}
+	]
+}

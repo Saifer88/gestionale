@@ -9,8 +9,8 @@ final class StoreFactoryTests: XCTestCase {
         let container = try StoreFactory.makeContainer(inMemory: true)
         XCTAssertEqual(PaolaSchemaV1.versionIdentifier, Schema.Version(1, 0, 0))
         XCTAssertEqual(PaolaSchemaV1.models.count, 1)
-        XCTAssertEqual(PaolaSchemaMigrationPlan.schemas.count, 9)
-        XCTAssertEqual(PaolaSchemaMigrationPlan.stages.count, 8)
+        XCTAssertEqual(PaolaSchemaMigrationPlan.schemas.count, 10)
+        XCTAssertEqual(PaolaSchemaMigrationPlan.stages.count, 9)
         XCTAssertEqual(PaolaSchemaV3.versionIdentifier, Schema.Version(3, 0, 0))
         XCTAssertEqual(PaolaSchemaV3.models.count, 9)
         XCTAssertEqual(PaolaSchemaV4.versionIdentifier, Schema.Version(4, 0, 0))
@@ -133,7 +133,7 @@ final class StoreFactoryTests: XCTestCase {
                     anamnesis: "Anamnesi salvata", physicalAnalysis: "Analisi salvata"))
             }
             try autoreleasepool {
-                let schema = Schema(versionedSchema: PaolaSchemaV9.self)
+                let schema = BusinessTestStore.schema
                 let configuration = ModelConfiguration(
                     "PaolaGestionale",
                     schema: schema,

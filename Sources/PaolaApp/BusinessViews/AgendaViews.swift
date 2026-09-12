@@ -323,7 +323,7 @@ struct AgendaView: View {
                 )
             }
             .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
-            VStack(alignment: .trailing, spacing: 8) {
+            VStack(alignment: .center, spacing: 8) {
                 accountingDot(for: session)
                 if session.status == .provisional {
                     // L'icona arancione (badge provvisorio) conferma l'appuntamento

@@ -322,7 +322,8 @@ PAOLA_RUN_TESTS=1 ./build-app.sh    # test + build dell'app
 
 - I test usano archivi **in memoria o cartelle temporanee isolate**, mai l'archivio
   dell'app e mai un account iCloud.
-- I test store devono usare lo **schema corrente** (`PaolaSchemaV9.self`).
+- I test store devono usare lo **schema corrente** (`PaolaSchemaV10.self`), tramite
+  `BusinessTestStore.schema` nei test del dominio.
 - `BusinessError` **non** è `Equatable`: nei test usa `guard case BusinessError.x = error`.
 - Le aree ad alto rischio (regole economiche, migrazioni, idempotenza, saldi) vanno
   coperte quando si tocca il dominio.
