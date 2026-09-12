@@ -45,6 +45,16 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     /// Metodi selezionabili dall'utente per gli incassi (contanti, Stripe, carta,
     /// bonifico, PayPal). "Altro" resta solo per i movimenti storici senza metodo indicato.
     public static var selectable: [PaymentMethod] { [.cash, .stripe, .card, .bankTransfer, .paypal] }
+
+    /// Ripartizione contabile predefinita "bianco/nero" in base al metodo: contanti e
+    /// PayPal sono considerati nero, tutti gli altri bianco. È solo il valore iniziale:
+    /// l'utente può sempre commutarlo manualmente sul singolo appuntamento/pacchetto.
+    public var defaultsToBlack: Bool {
+        switch self {
+        case .cash, .paypal: return true
+        case .stripe, .card, .bankTransfer, .other: return false
+        }
+    }
 }
 
 @Model public final class TrainingService {
@@ -77,6 +87,9 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     /// Contrassegno manuale "pagato" dell'appuntamento (schema V9). Indipendente dai
     /// movimenti economici e dalla fatturazione: è un promemoria per il trainer.
     public var isPaid: Bool = false
+    /// Ripartizione contabile "bianco/nero" (schema V10): false = bianco, true = nero.
+    /// Valore iniziale dal metodo di pagamento (contanti/PayPal = nero), poi commutabile.
+    public var isBlack: Bool = false
     public var createdAt: Date = Date()
     public var updatedAt: Date = Date()
 
@@ -89,12 +102,12 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     public init(id: UUID = UUID(), startDate: Date = Date(), durationMinutes: Int = 60,
                 serviceID: UUID? = nil, serviceName: String = "", location: String = "",
                 notes: String = "", status: SessionStatus = .planned,
-                invoiceDate: Date? = nil, isPaid: Bool = false,
+                invoiceDate: Date? = nil, isPaid: Bool = false, isBlack: Bool = false,
                 createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id; self.startDate = startDate; self.durationMinutes = durationMinutes
         self.serviceID = serviceID; self.serviceName = serviceName; self.location = location
         self.notes = notes; self.statusRaw = status.rawValue; self.invoiceDate = invoiceDate
-        self.isPaid = isPaid
+        self.isPaid = isPaid; self.isBlack = isBlack
         self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }
@@ -134,6 +147,9 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     public var paymentMethodRaw: String = "cash"
     /// Data scelta per la fatturazione del pacchetto (schema V8). Opzionale, default nil.
     public var invoiceDate: Date?
+    /// Ripartizione contabile "bianco/nero" (schema V10): false = bianco, true = nero.
+    /// Valore iniziale dal metodo di pagamento (contanti/PayPal = nero), poi commutabile.
+    public var isBlack: Bool = false
 
     public var paymentMethod: PaymentMethod {
         get { PaymentMethod(rawValue: paymentMethodRaw) ?? .cash }
@@ -143,12 +159,13 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     public init(id: UUID = UUID(), clientID: UUID = UUID(), clientName: String = "",
                 purchasedOn: Date = Date(), priceCents: Int64 = 0, capacity: Int = 10,
                 expiresOn: Date? = nil, notes: String = "", paymentMethod: PaymentMethod = .cash,
-                invoiceDate: Date? = nil) {
+                invoiceDate: Date? = nil, isBlack: Bool = false) {
         self.id = id; self.clientID = clientID; self.clientName = clientName
         self.purchasedOn = purchasedOn; self.priceCents = priceCents; self.capacity = capacity
         self.expiresOn = expiresOn; self.notes = notes
         self.paymentMethodRaw = paymentMethod.rawValue
         self.invoiceDate = invoiceDate
+        self.isBlack = isBlack
     }
 }
 
@@ -255,6 +272,10 @@ public struct SessionDraft {
     /// `.planned` (programmato) oppure `.provisional` (provvisorio). Per una
     /// modifica lascia `nil` per conservare lo stato attuale.
     public var status: SessionStatus?
+    /// Ripartizione contabile "bianco/nero". `nil` = deriva dal metodo di pagamento
+    /// per un nuovo appuntamento (contanti/PayPal = nero) o conserva il valore attuale
+    /// in modifica; imposta esplicitamente true/false per forzare lo stato.
+    public var isBlack: Bool?
     public init() {}
     public init(_ model: TrainingSession, participants: [SessionParticipant] = []) {
         id = model.id; startDate = model.startDate; durationMinutes = model.durationMinutes
@@ -276,12 +297,16 @@ public struct PackageDraft {
     public var expiresOn: Date?
     public var notes = ""
     public var paymentMethod: PaymentMethod = .cash
+    /// Ripartizione contabile "bianco/nero". `nil` = deriva dal metodo di pagamento
+    /// alla creazione (contanti/PayPal = nero) o conserva il valore attuale in modifica.
+    public var isBlack: Bool?
     public init() {}
     public init(_ model: LessonPackage) {
         id = model.id; clientID = model.clientID; purchasedOn = model.purchasedOn
         priceCents = model.priceCents; capacity = model.capacity
         expiresOn = model.expiresOn; notes = model.notes
         paymentMethod = model.paymentMethod
+        isBlack = model.isBlack
     }
 }
 

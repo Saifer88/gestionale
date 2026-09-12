@@ -165,6 +165,14 @@ public final class BusinessRepository {
             if targetStatus == .provisional || targetStatus == .planned {
                 session.status = targetStatus
             }
+            // Ripartizione bianco/nero: se la bozza la specifica la applica; per un nuovo
+            // appuntamento senza indicazione deriva dal metodo del primo partecipante
+            // (contanti/PayPal = nero); in modifica senza indicazione resta invariata.
+            if let isBlack = draft.isBlack {
+                session.isBlack = isBlack
+            } else if draft.id == nil {
+                session.isBlack = draft.participants.first?.paymentMethod.defaultsToBlack ?? false
+            }
             session.updatedAt = Date()
             participants.forEach { writer.insert($0) }
             let preferences = try writer.fetch(FetchDescriptor<ClientAppointmentPreference>())
@@ -258,6 +266,25 @@ public final class BusinessRepository {
         }
     }
 
+    /// Imposta la ripartizione contabile "bianco/nero" (true = nero) di un appuntamento.
+    public func setSessionBlack(_ id: UUID, _ black: Bool) throws {
+        try transact { writer in
+            let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
+            if session.isBlack == black { return }
+            session.isBlack = black
+            session.updatedAt = Date()
+        }
+    }
+
+    /// Imposta la ripartizione contabile "bianco/nero" (true = nero) di un pacchetto.
+    public func setPackageBlack(_ id: UUID, _ black: Bool) throws {
+        try transact { writer in
+            let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
+            if package.isBlack == black { return }
+            package.isBlack = black
+        }
+    }
+
     @discardableResult
     public func savePackage(_ draft: PackageDraft) throws -> UUID {
         try transact { writer in
@@ -285,6 +312,7 @@ public final class BusinessRepository {
                 package.expiresOn = draft.expiresOn
                 package.notes = notes
                 package.paymentMethod = draft.paymentMethod
+                if let isBlack = draft.isBlack { package.isBlack = isBlack }
 
                 // Allinea i movimenti economici collegati (addebito e incasso) a prezzo/data/metodo.
                 let entries = try writer.fetch(FetchDescriptor<LedgerEntry>())
@@ -307,9 +335,12 @@ public final class BusinessRepository {
             }
 
             let client = try client(draft.clientID, in: writer, requireActive: true)
+            // Bianco/nero: se non indicato nella bozza, deriva dal metodo di pagamento.
+            let packageIsBlack = draft.isBlack ?? draft.paymentMethod.defaultsToBlack
             let package = LessonPackage(clientID: client.id, clientName: client.fullName,
                 purchasedOn: draft.purchasedOn, priceCents: draft.priceCents, capacity: draft.capacity,
-                expiresOn: draft.expiresOn, notes: notes, paymentMethod: draft.paymentMethod)
+                expiresOn: draft.expiresOn, notes: notes, paymentMethod: draft.paymentMethod,
+                isBlack: packageIsBlack)
             writer.insert(package)
             writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
                 kind: .charge, amountCents: draft.priceCents, notes: "Pacchetto \(draft.capacity) lezioni",

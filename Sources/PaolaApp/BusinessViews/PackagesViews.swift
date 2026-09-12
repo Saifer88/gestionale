@@ -105,6 +105,9 @@ struct PackageEditor: View {
     @State private var expiry = Date()
     @State private var notes = ""
     @State private var paymentMethod: PaymentMethod = .cash
+    @State private var isBlack = false
+    /// True se l'utente ha toccato la scelta bianco/nero: altrimenti segue il metodo.
+    @State private var accountingEdited = false
     @State private var operation = BusinessOperation()
     @State private var confirmingIncome = false
     @State private var confirmingDelete = false
@@ -117,6 +120,7 @@ struct PackageEditor: View {
 
     init(clientID: UUID? = nil) {
         self.package = nil
+        _isBlack = State(initialValue: PaymentMethod.cash.defaultsToBlack)
         _selectedClientID = State(initialValue: clientID)
     }
 
@@ -130,6 +134,8 @@ struct PackageEditor: View {
         _expiry = State(initialValue: package.expiresOn ?? Date())
         _notes = State(initialValue: package.notes)
         _paymentMethod = State(initialValue: package.paymentMethod)
+        _isBlack = State(initialValue: package.isBlack)
+        _accountingEdited = State(initialValue: true)
     }
 
     var body: some View {
@@ -174,6 +180,20 @@ struct PackageEditor: View {
                                 }
                             }
                             .accessibilityIdentifier("package.paymentMethod")
+                            .onChange(of: paymentMethod) { _, method in
+                                // Finché l'utente non sceglie manualmente, la ripartizione
+                                // segue il metodo (contanti/PayPal = nero).
+                                if !accountingEdited { isBlack = method.defaultsToBlack }
+                            }
+                            Picker("Contabilità", selection: Binding(
+                                get: { isBlack },
+                                set: { isBlack = $0; accountingEdited = true }
+                            )) {
+                                Text("Bianco").tag(false)
+                                Text("Nero").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .accessibilityIdentifier("package.accounting")
                             DatePicker("Data di acquisto", selection: $purchasedOn, displayedComponents: .date)
                                 .accessibilityIdentifier("package.purchasedOn")
                             Toggle("Prevede una scadenza", isOn: $hasExpiry)
@@ -276,6 +296,7 @@ struct PackageEditor: View {
             draft.expiresOn = hasExpiry ? Calendar.current.startOfDay(for: expiry) : nil
             draft.notes = notes
             draft.paymentMethod = paymentMethod
+            draft.isBlack = isBlack
             _ = try BusinessRepository(context: context).savePackage(draft)
             dismiss()
         } catch { operation.capture(error) }

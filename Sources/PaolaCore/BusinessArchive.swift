@@ -404,13 +404,14 @@ public struct BusinessArchive: Codable, Equatable {
         public var statusRaw: String
         public var invoiceDate: Date?
         public var isPaid: Bool
+        public var isBlack: Bool
         public var createdAt: Date
         public var updatedAt: Date
         public init(_ value: TrainingSession) {
             id = value.id; startDate = value.startDate; durationMinutes = value.durationMinutes
             serviceID = value.serviceID; serviceName = value.serviceName; location = value.location
             notes = value.notes; statusRaw = value.statusRaw; invoiceDate = value.invoiceDate
-            isPaid = value.isPaid
+            isPaid = value.isPaid; isBlack = value.isBlack
             createdAt = value.createdAt; updatedAt = value.updatedAt
         }
         public init(from decoder: Decoder) throws {
@@ -425,13 +426,15 @@ public struct BusinessArchive: Codable, Equatable {
             statusRaw = try c.decode(String.self, forKey: .statusRaw)
             invoiceDate = try c.decodeIfPresent(Date.self, forKey: .invoiceDate)
             isPaid = try c.decodeIfPresent(Bool.self, forKey: .isPaid) ?? false
+            isBlack = try c.decodeIfPresent(Bool.self, forKey: .isBlack) ?? false
             createdAt = try c.decode(Date.self, forKey: .createdAt)
             updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         }
         internal func model() -> TrainingSession {
             let value = TrainingSession(id: id, startDate: startDate, durationMinutes: durationMinutes,
                 serviceID: serviceID, serviceName: serviceName, location: location, notes: notes,
-                invoiceDate: invoiceDate, isPaid: isPaid, createdAt: createdAt, updatedAt: updatedAt)
+                invoiceDate: invoiceDate, isPaid: isPaid, isBlack: isBlack,
+                createdAt: createdAt, updatedAt: updatedAt)
             value.statusRaw = statusRaw
             return value
         }
@@ -476,11 +479,13 @@ public struct BusinessArchive: Codable, Equatable {
         public var notes: String
         public var paymentMethodRaw: String
         public var invoiceDate: Date?
+        public var isBlack: Bool
         public init(_ value: LessonPackage) {
             id = value.id; clientID = value.clientID; clientName = value.clientName
             purchasedOn = value.purchasedOn; priceCents = value.priceCents; capacity = value.capacity
             expiresOn = value.expiresOn; notes = value.notes
             paymentMethodRaw = value.paymentMethodRaw; invoiceDate = value.invoiceDate
+            isBlack = value.isBlack
         }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -494,11 +499,13 @@ public struct BusinessArchive: Codable, Equatable {
             notes = try c.decode(String.self, forKey: .notes)
             paymentMethodRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethodRaw) ?? "cash"
             invoiceDate = try c.decodeIfPresent(Date.self, forKey: .invoiceDate)
+            isBlack = try c.decodeIfPresent(Bool.self, forKey: .isBlack) ?? false
         }
         internal func model() -> LessonPackage {
             LessonPackage(id: id, clientID: clientID, clientName: clientName, purchasedOn: purchasedOn,
                 priceCents: priceCents, capacity: capacity, expiresOn: expiresOn, notes: notes,
-                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash, invoiceDate: invoiceDate)
+                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash, invoiceDate: invoiceDate,
+                isBlack: isBlack)
         }
     }
     public struct PackageUseRecord: Codable, Equatable {

@@ -113,13 +113,8 @@ struct AgendaView: View {
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("agenda.period")
                     Spacer(minLength: 12)
-                    // Totale in € degli appuntamenti del periodo visualizzato, in alto a
-                    // destra, della stessa dimensione del nome del giorno (headline).
-                    Text(Money.format(totalCents))
-                        .font(.headline).monospacedDigit()
-                        .foregroundStyle(.primary)
-                        .accessibilityIdentifier("agenda.periodTotal")
-                        .accessibilityLabel("Totale del periodo \(Money.format(totalCents))")
+                    // Riepilogo del periodo in alto a destra: Totale, Bianco, Nero e barra.
+                    totalsSummary
                 }
                 HStack {
                     Button { move(-1) } label: { Image(systemName: "chevron.left") }
@@ -180,20 +175,84 @@ struct AgendaView: View {
 
     /// Somma in centesimi dei prezzi concordati dei partecipanti agli appuntamenti
     /// visibili nel periodo (giorno/settimana/mese). Esclude gli annullati e le assenze.
-    private var totalCents: Int64 {
-        let visibleIDs = Set(visibleSessions.filter { $0.status != .cancelled && $0.status != .noShow }.map(\.id))
-        // Partecipanti agli appuntamenti visibili, ESCLUSI quelli coperti da un
-        // pacchetto: la loro lezione è già pagata con l'acquisto del pacchetto e non
-        // rappresenta un incasso della sessione.
-        let sessionsTotal = participants
-            .filter { visibleIDs.contains($0.sessionID) && $0.packageID == nil }
-            .reduce(Int64(0)) { $0 + $1.priceCents }
-        // Pacchetti acquistati nel periodo visualizzato: il loro valore ricade nella
-        // sezione dell'agenda in cui cade la data di acquisto.
-        let packagesTotal = packages
-            .filter { interval.start <= $0.purchasedOn && $0.purchasedOn < interval.end }
-            .reduce(Int64(0)) { $0 + $1.priceCents }
-        return sessionsTotal + packagesTotal
+    /// Ripartizione del totale del periodo in bianco e nero. `bianco + nero == totale`.
+    private struct AccountingTotals {
+        var white: Int64 = 0
+        var black: Int64 = 0
+        var total: Int64 { white + black }
+        mutating func add(_ cents: Int64, black isBlack: Bool) {
+            if isBlack { black += cents } else { white += cents }
+        }
+    }
+
+    /// Totale del periodo suddiviso in bianco/nero:
+    /// - partecipanti agli appuntamenti visibili, ESCLUSI quelli coperti da un pacchetto
+    ///   (già pagati con l'acquisto), attribuiti al colore dell'appuntamento;
+    /// - pacchetti acquistati nel periodo, attribuiti al proprio colore.
+    private var accountingTotals: AccountingTotals {
+        var totals = AccountingTotals()
+        let byID = Dictionary(uniqueKeysWithValues:
+            visibleSessions.filter { $0.status != .cancelled && $0.status != .noShow }.map { ($0.id, $0) })
+        for participant in participants where participant.packageID == nil {
+            if let session = byID[participant.sessionID] {
+                totals.add(participant.priceCents, black: session.isBlack)
+            }
+        }
+        for package in packages where interval.start <= package.purchasedOn && package.purchasedOn < interval.end {
+            totals.add(package.priceCents, black: package.isBlack)
+        }
+        return totals
+    }
+
+    private var totalCents: Int64 { accountingTotals.total }
+
+    /// Riepilogo in alto a destra: Totale, Bianco e Nero (stessa dimensione del nome
+    /// del giorno) con una barra che mostra le percentuali di bianco/nero sul totale.
+    @ViewBuilder private var totalsSummary: some View {
+        let totals = accountingTotals
+        VStack(alignment: .trailing, spacing: 2) {
+            LabeledContent {
+                Text(Money.format(totals.total)).font(.headline).monospacedDigit()
+            } label: {
+                Text("Totale").font(.headline)
+            }
+            .accessibilityIdentifier("agenda.periodTotal")
+            LabeledContent {
+                Text(Money.format(totals.white)).font(.subheadline).monospacedDigit()
+            } label: {
+                Label("Bianco", systemImage: "circle.fill").font(.subheadline)
+            }
+            .accessibilityIdentifier("agenda.periodWhite")
+            LabeledContent {
+                Text(Money.format(totals.black)).font(.subheadline).monospacedDigit()
+            } label: {
+                Label("Nero", systemImage: "circle").font(.subheadline)
+            }
+            .accessibilityIdentifier("agenda.periodBlack")
+            percentageBar(totals)
+                .frame(width: 160)
+                .padding(.top, 2)
+        }
+        .frame(maxWidth: 220)
+    }
+
+    /// Barra proporzionale bianco/nero sul totale. Se il totale è zero è vuota.
+    @ViewBuilder private func percentageBar(_ totals: AccountingTotals) -> some View {
+        let total = max(totals.total, 0)
+        let whiteFraction = total > 0 ? Double(totals.white) / Double(total) : 0
+        let whitePercent = Int((whiteFraction * 100).rounded())
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                Rectangle().fill(Color.white)
+                    .frame(width: geo.size.width * whiteFraction)
+                Rectangle().fill(Color.black)
+            }
+        }
+        .frame(height: 8)
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.secondary.opacity(0.4), lineWidth: 1))
+        .accessibilityLabel("Ripartizione: \(whitePercent) percento bianco, \(100 - whitePercent) percento nero")
+        .accessibilityIdentifier("agenda.percentageBar")
     }
 
     private var weekColumns: some View {
@@ -245,11 +304,15 @@ struct AgendaView: View {
         // Il pulsante di conferma resta FUORI dal NavigationLink: dentro l'etichetta
         // di un NavigationLink un tocco aprirebbe comunque il dettaglio. Così invece
         // conferma direttamente (provvisorio -> programmato) senza altre schermate.
-        HStack(alignment: .center, spacing: 8) {
+        // I controlli restano FUORI dal NavigationLink: dentro l'etichetta di un
+        // NavigationLink un tocco aprirebbe comunque il dettaglio. Il pallino bianco/nero
+        // sta in alto a destra; gli altri controlli (conferma, pagato) sotto di esso.
+        HStack(alignment: .top, spacing: 8) {
             if session.status != .completed {
                 // Maniglia di trascinamento: il drag parte da qui, così toccare il
                 // resto della card apre il dettaglio senza spostare l'appuntamento.
                 dragHandle(for: session)
+                    .padding(.top, 2)
             }
             NavigationLink {
                 SessionDetailView(session: session)
@@ -260,25 +323,45 @@ struct AgendaView: View {
                 )
             }
             .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
-            if session.status == .provisional {
-                // L'icona arancione (badge provvisorio) conferma l'appuntamento
-                // rendendolo programmato, direttamente e senza altre schermate.
-                Button {
-                    confirmProvisional(session)
-                } label: {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .padding(4)
-                        .background(Color.orange.opacity(0.18), in: Circle())
+            VStack(alignment: .trailing, spacing: 8) {
+                accountingDot(for: session)
+                if session.status == .provisional {
+                    // L'icona arancione (badge provvisorio) conferma l'appuntamento
+                    // rendendolo programmato, direttamente e senza altre schermate.
+                    Button {
+                        confirmProvisional(session)
+                    } label: {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .padding(4)
+                            .background(Color.orange.opacity(0.18), in: Circle())
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Conferma l'appuntamento provvisorio (lo rende programmato).")
+                    .accessibilityLabel("Conferma appuntamento provvisorio")
+                    .accessibilityIdentifier("session.confirmProvisional")
                 }
-                .buttonStyle(.borderless)
-                .help("Conferma l'appuntamento provvisorio (lo rende programmato).")
-                .accessibilityLabel("Conferma appuntamento provvisorio")
-                .accessibilityIdentifier("session.confirmProvisional")
+                paidToggle(for: session)
             }
-            paidToggle(for: session)
         }
+    }
+
+    /// Pallino "bianco/nero" in alto a destra del badge: un tocco commuta la
+    /// ripartizione contabile dell'appuntamento (bianco ↔ nero), senza altre schermate.
+    @ViewBuilder private func accountingDot(for session: TrainingSession) -> some View {
+        Button {
+            toggleAccounting(session)
+        } label: {
+            Circle()
+                .fill(session.isBlack ? Color.black : Color.white)
+                .frame(width: 16, height: 16)
+                .overlay(Circle().stroke(Color.secondary, lineWidth: 1))
+        }
+        .buttonStyle(.borderless)
+        .help(session.isBlack ? "Nero. Tocca per passare a bianco." : "Bianco. Tocca per passare a nero.")
+        .accessibilityLabel(session.isBlack ? "Contabilità: nero" : "Contabilità: bianco")
+        .accessibilityIdentifier("session.accountingDot")
     }
 
     /// Interruttore "pagato" a icona: attiva/disattiva il contrassegno di pagamento
@@ -330,6 +413,12 @@ struct AgendaView: View {
     /// Attiva/disattiva il contrassegno "pagato" dell'appuntamento.
     private func togglePaid(_ session: TrainingSession) {
         do { try BusinessRepository(context: context).setSessionPaid(session.id, !session.isPaid) }
+        catch { operation.capture(error) }
+    }
+
+    /// Commuta la ripartizione contabile bianco/nero dell'appuntamento.
+    private func toggleAccounting(_ session: TrainingSession) {
+        do { try BusinessRepository(context: context).setSessionBlack(session.id, !session.isBlack) }
         catch { operation.capture(error) }
     }
 
