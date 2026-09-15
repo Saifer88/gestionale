@@ -345,7 +345,8 @@ struct AgendaView: View {
                     .accessibilityLabel("Conferma appuntamento provvisorio")
                     .accessibilityIdentifier("session.confirmProvisional")
                 }
-                paidToggle(for: session)
+                if participants.filter({$0.sessionID == session.id}).count != 1  || participants.filter({$0.sessionID == session.id})[0].packageID == nil{
+                    paidToggle(for: session) }
             }
         }
     }

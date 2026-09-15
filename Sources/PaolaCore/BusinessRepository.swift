@@ -187,6 +187,11 @@ public final class BusinessRepository {
                     priceCents: participant.priceCents, packageID: participant.packageID,
                     durationMinutes: draft.durationMinutes, updatedAt: session.updatedAt))
             }
+            
+            if draft.participants.count == 1 && draft.participants[0].packageID != nil {
+                session.isPaid = true
+            }
+
             return session.id
         }
     }
