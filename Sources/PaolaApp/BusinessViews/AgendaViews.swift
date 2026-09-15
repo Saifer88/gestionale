@@ -308,11 +308,14 @@ struct AgendaView: View {
         // NavigationLink un tocco aprirebbe comunque il dettaglio. Il pallino bianco/nero
         // sta in alto a destra; gli altri controlli (conferma, pagato) sotto di esso.
         HStack(alignment: .top, spacing: 8) {
-            if session.status != .completed {
-                // Maniglia di trascinamento: il drag parte da qui, così toccare il
-                // resto della card apre il dettaglio senza spostare l'appuntamento.
-                dragHandle(for: session)
-                    .padding(.top, 2)
+            VStack(alignment: .center, spacing: 8){
+                completedIcon(for: session)
+                if session.status != .completed {
+                    // Maniglia di trascinamento: il drag parte da qui, così toccare il
+                    // resto della card apre il dettaglio senza spostare l'appuntamento.
+                    dragHandle(for: session)
+
+                }
             }
             NavigationLink {
                 SessionDetailView(session: session)
@@ -343,6 +346,24 @@ struct AgendaView: View {
                     .accessibilityIdentifier("session.confirmProvisional")
                 }
                 paidToggle(for: session)
+            }
+        }
+    }
+
+    @ViewBuilder private func completedIcon (for session: TrainingSession) -> some View {
+        if session.status == .completed {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .help("Appuntamento completato")
+                .accessibilityLabel("Completato")
+        } 
+        if session.status == .planned {
+            Button {
+                try? BusinessRepository(context: context).setSessionStatus(session.id, to: .completed)
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+                .font(.callout)
+                .foregroundStyle(.yellow)
             }
         }
     }
@@ -386,12 +407,11 @@ struct AgendaView: View {
     /// elemento trascinabile della riga: prendendola si sposta l'appuntamento nel
     /// calendario, mentre il resto della card resta dedicato all'apertura del dettaglio.
     @ViewBuilder private func dragHandle(for session: TrainingSession) -> some View {
-        Image(systemName: "line.3.horizontal")
-            .font(.title3)
+        Image(systemName: "text.justify")
+            .font(.callout)
             .foregroundStyle(.secondary)
-            .frame(width: 32, height: 32)
-            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
+            .background(Color.secondary.opacity(0.12), in: Circle())
+            .contentShape(Circle())
             // onDrag con NSItemProvider è più affidabile di .draggable dentro le liste
             // e le viste con scorrimento. All'avvio segnala l'inizio del trascinamento.
             .onDrag {
