@@ -330,6 +330,19 @@ public struct BlockDraft {
     }
 }
 
+public struct ExpenseDraft {
+    public var id: UUID?
+    public var name = ""
+    public var date = Date()
+    public var amountCents: Int64 = 0
+    public var kind: ExpenseKind = .oneTime
+    public init() {}
+    public init(_ model: Expense) {
+        id = model.id; name = model.name; date = model.date
+        amountCents = model.amountCents; kind = model.kind
+    }
+}
+
 public enum BusinessError: Error, LocalizedError {
     case invalidInput(String)
     case notFound(String)
@@ -370,6 +383,22 @@ internal enum BusinessRules {
         "\(sessionID.uuidString.lowercased()):\(clientID.uuidString.lowercased())"
     }
     static func packageSource(_ id: UUID) -> String { id.uuidString.lowercased() }
+    /// Etichetta del metodo per il nome della spesa automatica (es. "stripe", "carta").
+    static func feeLabel(_ method: PaymentMethod) -> String {
+        switch method {
+        case .stripe: return "stripe"
+        case .card: return "carta"
+        default: return method.rawValue
+        }
+    }
+    /// Data e ora in formato italiano per i nomi delle spese automatiche.
+    static func dateTimeLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "it_IT")
+        formatter.timeZone = SchedulingSuggestions.calendar.timeZone
+        formatter.dateFormat = "dd/MM/yyyy HH:mm"
+        return formatter.string(from: date)
+    }
     static func packageIncomeSource(_ id: UUID) -> String { "income:package:\(packageSource(id))" }
     static func sessionIncomeSource(sessionID: UUID, clientID: UUID) -> String {
         "income:session:\(sessionSource(sessionID: sessionID, clientID: clientID))"

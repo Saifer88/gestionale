@@ -8,7 +8,7 @@ public enum StoreFactory {
         inMemory: Bool = false,
         cloudKitContainerIdentifier: String? = nil
     ) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: PaolaSchemaV10.self)
+        let schema = Schema(versionedSchema: PaolaSchemaV11.self)
         let configuration: ModelConfiguration
         if inMemory {
             configuration = ModelConfiguration(
@@ -120,6 +120,7 @@ public enum StoreFactory {
         try context.delete(model: LedgerEntry.self)
         try context.delete(model: Unavailability.self)
         try context.delete(model: Invoice.self)
+        try context.delete(model: Expense.self)
         try context.save()
     }
 

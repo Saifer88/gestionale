@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 enum BusinessTestStore {
     static var schema: Schema {
-        Schema(versionedSchema: PaolaSchemaV10.self)
+        Schema(versionedSchema: PaolaSchemaV11.self)
     }
     static func make() throws -> ModelContainer {
         try ModelContainer(for: schema, configurations: [

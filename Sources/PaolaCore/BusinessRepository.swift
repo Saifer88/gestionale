@@ -228,6 +228,13 @@ public final class BusinessRepository {
                                 date: completionDate, kind: .payment, amountCents: participant.priceCents,
                                 method: participant.paymentMethod, notes: session.serviceName,
                                 sourceKey: BusinessRules.sessionIncomeSource(sessionID: id, clientID: participant.clientID)))
+                            // Spesa automatica (commissione) per incassi Stripe/carta.
+                            let feeName = "Spesa \(BusinessRules.feeLabel(participant.paymentMethod)) appuntamento "
+                                + "\(participant.clientName) \(BusinessRules.dateTimeLabel(session.startDate))"
+                            try addTransactionFeeExpense(method: participant.paymentMethod, priceCents: participant.priceCents,
+                                name: feeName, date: completionDate,
+                                sourceKey: Expense.sessionFeeSourceKey(sessionID: id, clientID: participant.clientID),
+                                in: writer)
                         }
                     }
                 }
@@ -290,6 +297,51 @@ public final class BusinessRepository {
         }
     }
 
+    // MARK: - Spese
+
+    /// Crea o aggiorna una spesa inserita a mano (una tantum o ricorrente mensile).
+    @discardableResult
+    public func saveExpense(_ draft: ExpenseDraft) throws -> UUID {
+        try transact { writer in
+            let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { throw BusinessError.invalidInput("Inserire il nome della spesa.") }
+            try BusinessRules.date(draft.date); try BusinessRules.amount(draft.amountCents)
+            let expense: Expense
+            if let id = draft.id {
+                expense = try find(id, in: writer, type: Expense.self, name: "Spesa")
+            } else {
+                expense = Expense()
+                writer.insert(expense)
+            }
+            expense.name = name
+            expense.date = draft.date
+            expense.amountCents = draft.amountCents
+            expense.kind = draft.kind
+            expense.updatedAt = Date()
+            return expense.id
+        }
+    }
+
+    public func deleteExpense(_ id: UUID) throws {
+        try transact { writer in
+            writer.delete(try find(id, in: writer, type: Expense.self, name: "Spesa"))
+        }
+    }
+
+    /// Crea la spesa automatica (commissione) per un incasso Stripe/carta, se non già
+    /// presente per la stessa origine (idempotente via `sourceKey`). Nessun effetto per
+    /// altri metodi o importi non positivi.
+    private func addTransactionFeeExpense(method: PaymentMethod, priceCents: Int64,
+                                          name: String, date: Date, sourceKey: String,
+                                          in writer: ModelContext) throws {
+        guard TransactionFee.applies(to: method), priceCents > 0,
+              let fee = TransactionFee.cents(for: priceCents, method: method), fee > 0 else { return }
+        let key = sourceKey.lowercased()
+        let existing = try writer.fetch(FetchDescriptor<Expense>())
+        if existing.contains(where: { $0.sourceKey.lowercased() == key }) { return }
+        writer.insert(Expense(name: name, date: date, amountCents: fee, kind: .oneTime, sourceKey: sourceKey))
+    }
+
     @discardableResult
     public func savePackage(_ draft: PackageDraft) throws -> UUID {
         try transact { writer in
@@ -336,6 +388,25 @@ public final class BusinessRepository {
                         entry.notes = "Pacchetto \(draft.capacity) lezioni"
                     }
                 }
+                // Riconcilia la spesa automatica (commissione) col nuovo metodo/prezzo.
+                let feeKey = Expense.packageFeeSourceKey(package.id).lowercased()
+                let feeExpenses = try writer.fetch(FetchDescriptor<Expense>())
+                    .filter { $0.sourceKey.lowercased() == feeKey }
+                let expectedFee = draft.priceCents > 0
+                    ? TransactionFee.cents(for: draft.priceCents, method: draft.paymentMethod) : nil
+                if let expectedFee, expectedFee > 0 {
+                    let feeName = "Spesa \(BusinessRules.feeLabel(draft.paymentMethod)) pacchetto \(package.clientName)"
+                    if let expense = feeExpenses.first {
+                        expense.amountCents = expectedFee; expense.date = draft.purchasedOn
+                        expense.name = feeName; expense.updatedAt = Date()
+                        for extra in feeExpenses.dropFirst() { writer.delete(extra) }
+                    } else {
+                        writer.insert(Expense(name: feeName, date: draft.purchasedOn, amountCents: expectedFee,
+                            kind: .oneTime, sourceKey: Expense.packageFeeSourceKey(package.id)))
+                    }
+                } else {
+                    for expense in feeExpenses { writer.delete(expense) }
+                }
                 return package.id
             }
 
@@ -355,6 +426,11 @@ public final class BusinessRepository {
                     kind: .payment, amountCents: draft.priceCents, method: draft.paymentMethod,
                     notes: "Pacchetto \(draft.capacity) lezioni",
                     sourceKey: BusinessRules.packageIncomeSource(package.id)))
+                // Spesa automatica (commissione) per incassi Stripe/carta.
+                let feeName = "Spesa \(BusinessRules.feeLabel(draft.paymentMethod)) pacchetto \(client.fullName)"
+                try addTransactionFeeExpense(method: draft.paymentMethod, priceCents: draft.priceCents,
+                    name: feeName, date: draft.purchasedOn,
+                    sourceKey: Expense.packageFeeSourceKey(package.id), in: writer)
             }
             return package.id
         }
@@ -375,6 +451,11 @@ public final class BusinessRepository {
             for entry in try writer.fetch(FetchDescriptor<LedgerEntry>())
             where entry.sourceKey.lowercased() == chargeSource || entry.sourceKey.lowercased() == incomeSource {
                 writer.delete(entry)
+            }
+            let feeKey = Expense.packageFeeSourceKey(id).lowercased()
+            for expense in try writer.fetch(FetchDescriptor<Expense>())
+            where expense.sourceKey.lowercased() == feeKey {
+                writer.delete(expense)
             }
             writer.delete(package)
         }
@@ -566,6 +647,7 @@ public final class BusinessRepository {
             case let value as LedgerEntry: return value.id == id
             case let value as Unavailability: return value.id == id
             case let value as Invoice: return value.id == id
+            case let value as Expense: return value.id == id
             default: return false
             }
         }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case overview, agenda, clients, packages, payments, reports, services, settings
+    case overview, agenda, clients, packages, payments, expenses, reports, services, settings
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .clients: "Clienti"
         case .packages: "Pacchetti"
         case .payments: "Pagamenti"
+        case .expenses: "Spese"
         case .reports: "Report"
         case .services: "Servizi"
         case .settings: "Impostazioni"
@@ -25,6 +26,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .clients: "person.2"
         case .packages: "rectangle.stack"
         case .payments: "creditcard"
+        case .expenses: "banknote"
         case .reports: "chart.bar"
         case .services: "list.bullet.rectangle"
         case .settings: "gearshape"
@@ -87,7 +89,7 @@ struct AppNavigation: View {
         }
         #else
         TabView(selection: $selectedSection) {
-            ForEach([AppSection.overview, .agenda, .clients, .payments, .settings]) { section in
+            ForEach([AppSection.overview, .agenda, .clients, .payments, .expenses, .settings]) { section in
                 NavigationStack {
                     destination(section)
                 }
@@ -113,6 +115,8 @@ struct AppNavigation: View {
             PackagesView()
         case .payments:
             PaymentsView()
+        case .expenses:
+            ExpensesView()
         case .reports:
             ReportsView()
         case .services:

@@ -88,7 +88,7 @@ mai il contrario. `PaolaCore` non importa `PaolaApp` né SwiftUI.
 | `Client.swift` | Modello `Client` (`typealias Client = PaolaSchemaV7.Client`), `PaolaSchemaV1` e il **piano di migrazione** `PaolaSchemaMigrationPlan`. |
 | `ClientDraft/Repository/Search.swift` | Bozza, repository e ricerca/duplicati clienti. |
 | `ServiceRate.swift`, `AppointmentPreferences.swift`, `SchedulingSuggestions.swift` | Listino/tariffe, preferenze, proposte di giorni/orari liberi. |
-| `SchemaV2.swift` … `SchemaV9.swift` | Schemi SwiftData versionati (vedi §4). |
+| `SchemaV2.swift` … `SchemaV11.swift` | Schemi SwiftData versionati (vedi §4). |
 | `StoreFactory.swift` | `makeContainer(...)` (schema corrente + migration plan), URL dello store, store ripristinati. |
 | `CloudNamespace.swift` | Namespace archivio per account CloudKit. |
 | `BackupCipher.swift`, `ArchiveSnapshot.swift` | Backup cifrato (AES-256-GCM / PBKDF2) e snapshot di ripristino. |
@@ -124,9 +124,9 @@ mai il contrario. `PaolaCore` non importa `PaolaApp` né SwiftUI.
 ## 4. Persistenza SwiftData e migrazioni
 
 - Ogni versione dello schema è un `enum … : VersionedSchema` con `versionIdentifier`
-  `Schema.Version(N, 0, 0)` e l'elenco `models`. Schema corrente: **`PaolaSchemaV9`**
-  (aggiunge il flag `isPaid` a `TrainingSession`). V8 aveva introdotto `Invoice` e il
-  campo opzionale `invoiceDate` su `TrainingSession`/`LessonPackage`.
+  `Schema.Version(N, 0, 0)` e l'elenco `models`. Schema corrente: **`PaolaSchemaV11`**
+  (aggiunge l'entità `Expense`). V10 ha aggiunto `isBlack` (bianco/nero), V9 `isPaid`,
+  V8 `Invoice` e `invoiceDate`.
 - I tipi correnti (`TrainingSession`, `SessionParticipant`, …) vivono in
   `BusinessModels.swift`; gli schemi **precedenti congelano** le versioni storiche
   delle classi (es. `PaolaSchemaV7.TrainingSession`, `PaolaSchemaV5.LessonPackage`).
@@ -322,7 +322,7 @@ PAOLA_RUN_TESTS=1 ./build-app.sh    # test + build dell'app
 
 - I test usano archivi **in memoria o cartelle temporanee isolate**, mai l'archivio
   dell'app e mai un account iCloud.
-- I test store devono usare lo **schema corrente** (`PaolaSchemaV10.self`), tramite
+- I test store devono usare lo **schema corrente** (`PaolaSchemaV11.self`), tramite
   `BusinessTestStore.schema` nei test del dominio.
 - `BusinessError` **non** è `Equatable`: nei test usa `guard case BusinessError.x = error`.
 - Le aree ad alto rischio (regole economiche, migrazioni, idempotenza, saldi) vanno
