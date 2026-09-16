@@ -44,6 +44,9 @@ public enum ExpenseKind: String, CaseIterable, Identifiable, Codable, Sendable {
 }
 
 extension Expense {
+    /// Prefisso comune delle chiavi delle spese automatiche (commissioni Stripe/carta).
+    public static let feeSourceKeyPrefix = "expense:fee:"
+
     /// Chiave di origine per la spesa automatica dell'incasso di un appuntamento.
     public static func sessionFeeSourceKey(sessionID: UUID, clientID: UUID) -> String {
         "expense:fee:session:\(sessionID.uuidString.lowercased()):\(clientID.uuidString.lowercased())"
@@ -51,6 +54,23 @@ extension Expense {
     /// Chiave di origine per la spesa automatica dell'incasso di un pacchetto.
     public static func packageFeeSourceKey(_ packageID: UUID) -> String {
         "expense:fee:package:\(packageID.uuidString.lowercased())"
+    }
+
+    /// True se la spesa è una commissione automatica (Stripe/carta), quindi non
+    /// eliminabile a mano: scompare solo modificando o eliminando l'origine.
+    public var isAutomaticFee: Bool {
+        sourceKey.lowercased().hasPrefix(Expense.feeSourceKeyPrefix)
+    }
+
+    /// UUID dell'appuntamento di origine, se la spesa è la commissione di una sessione.
+    /// Nil per le commissioni di pacchetto o le spese manuali.
+    public var feeSessionID: UUID? {
+        let key = sourceKey.lowercased()
+        let prefix = "expense:fee:session:"
+        guard key.hasPrefix(prefix) else { return nil }
+        let rest = key.dropFirst(prefix.count)
+        let uuidPart = rest.split(separator: ":").first.map(String.init) ?? ""
+        return UUID(uuidString: uuidPart)
     }
 }
 

@@ -33,6 +33,9 @@ final class AppUpdater: ObservableObject {
     private let session: URLSession
     private let currentVersion: AppVersion
     private let localBuild: Bool
+    /// Ultimo controllo automatico riuscito o avviato, per limitare i check ripetuti
+    /// alla riattivazione dell'app.
+    private var lastAutoCheck: Date?
 
     init(repository: GitHubRepository = .paola,
          session: URLSession = .shared,
@@ -67,12 +70,26 @@ final class AppUpdater: ObservableObject {
 
     var isLocalBuild: Bool { localBuild }
 
+    /// Controllo automatico all'apertura/riattivazione dell'app.
+    ///
+    /// Da chiamare al lancio e a ogni volta che l'app torna attiva (click sull'icona
+    /// nel Dock, ritorno in primo piano). Evita check ridondanti: salta se l'app è
+    /// una build locale, se un controllo/download è già in corso, se c'è già una
+    /// release in attesa di conferma, o se un controllo è avvenuto da meno di
+    /// `minInterval`. Non sovrascrive un dialog già aperto.
+    func checkOnActivation(minInterval: TimeInterval = 55 * 60, now: Date = Date()) async {
+        guard !localBuild, !isBusy, availableRelease == nil else { return }
+        if let last = lastAutoCheck, now.timeIntervalSince(last) < minInterval { return }
+        await checkForUpdates()
+    }
+
     /// Interroga GitHub e, se c'è una versione più recente, prepara la conferma.
     func checkForUpdates() async {
         guard !localBuild else {
             phase = .localBuild
             return
         }
+        lastAutoCheck = Date()
         phase = .checking
         availableRelease = nil
         do {

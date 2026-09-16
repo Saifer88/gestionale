@@ -1,6 +1,10 @@
+import Combine
 import PaolaCore
 import SwiftData
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 @main
 struct PaolaApp: App {
@@ -30,6 +34,9 @@ struct PaolaApp: App {
 
 private struct ApplicationRoot: View {
     @StateObject private var storage = StorageCoordinator()
+    #if os(macOS)
+    @StateObject private var updater = AppUpdater()
+    #endif
 
     var body: some View {
         Group {
@@ -66,6 +73,22 @@ private struct ApplicationRoot: View {
         }
         #if os(macOS)
         .frame(minWidth: 780, minHeight: 560)
+        // Il controllo aggiornamenti vive a livello root, indipendente dallo stato
+        // dell'archivio: la richiesta d'installazione appare anche se i dati non si
+        // aprono. Il prompt e l'updater condiviso sono disponibili anche nelle Impostazioni.
+        .environmentObject(updater)
+        .appUpdatePrompt(updater)
+        // Controllo all'apertura dell'app.
+        .task { await updater.checkOnActivation() }
+        // Controllo a ogni riattivazione (click sull'icona nel Dock, ritorno in primo
+        // piano) anche se l'app è già in esecuzione.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await updater.checkOnActivation() }
+        }
+        // Controllo automatico periodico ogni ora mentre l'app resta aperta.
+        .onReceive(Timer.publish(every: 60 * 60, tolerance: 60, on: .main, in: .common).autoconnect()) { _ in
+            Task { await updater.checkOnActivation() }
+        }
         #endif
         .task {
             if storage.container == nil && storage.errorMessage == nil {
@@ -76,8 +99,6 @@ private struct ApplicationRoot: View {
 }
 
 #if os(macOS)
-import AppKit
-
 /// Mantiene l'app in esecuzione quando si chiude la finestra: l'icona resta nel Dock
 /// e cliccandola la finestra viene riaperta. L'uscita vera resta disponibile da
 /// menu/⌘Q e dalla chiusura forzata dell'aggiornamento (NSApp.terminate).

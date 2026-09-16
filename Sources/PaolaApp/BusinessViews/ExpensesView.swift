@@ -13,8 +13,14 @@ private struct ExpenseEditTarget: Identifiable {
 struct ExpensesView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Expense.date, order: .reverse) private var expenses: [Expense]
+    @Query private var sessions: [TrainingSession]
     @State private var editing: ExpenseEditTarget?
     @State private var operation = BusinessOperation()
+
+    private func session(for expense: Expense) -> TrainingSession? {
+        guard let id = expense.feeSessionID else { return nil }
+        return sessions.first { $0.id == id }
+    }
 
     private var oneTime: [Expense] { expenses.filter { $0.kind == .oneTime } }
     private var recurring: [Expense] { expenses.filter { $0.kind == .monthlyRecurring } }
@@ -35,7 +41,7 @@ struct ExpensesView: View {
 
     var body: some View {
         Group {
-            if let error = _expenses.fetchError {
+            if let error = _expenses.fetchError ?? _sessions.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
                 content
@@ -90,28 +96,81 @@ struct ExpensesView: View {
     }
 
     @ViewBuilder private func row(_ expense: Expense, showsDate: Bool) -> some View {
-        Button {
-            editing = ExpenseEditTarget(draft: ExpenseDraft(expense))
-        } label: {
+        if expense.isAutomaticFee {
+            automaticFeeRow(expense)
+        } else {
+            manualRow(expense, showsDate: showsDate)
+        }
+    }
+
+    /// Riga di una spesa manuale: modificabile (tap sul contenuto) ed eliminabile
+    /// con il pulsante cestino a destra (oltre a swipe e menu contestuale).
+    private func manualRow(_ expense: Expense, showsDate: Bool) -> some View {
+        HStack {
+            Button {
+                editing = ExpenseEditTarget(draft: ExpenseDraft(expense))
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(expense.name).font(.body)
+                        Text(showsDate ? BusinessFormatting.day(expense.date)
+                                       : "Dal \(BusinessFormatting.day(expense.date))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(Money.format(expense.amountCents)).monospacedDigit()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                delete(expense)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.red)
+            .help("Elimina spesa")
+            .accessibilityIdentifier("expenses.delete.\(expense.id.uuidString)")
+        }
+        .swipeActions {
+            Button("Elimina", role: .destructive) { delete(expense) }
+        }
+        .contextMenu {
+            Button("Modifica") { editing = ExpenseEditTarget(draft: ExpenseDraft(expense)) }
+            Button("Elimina", role: .destructive) { delete(expense) }
+        }
+        .accessibilityIdentifier("expenses.row.\(expense.id.uuidString)")
+    }
+
+    /// Riga di una commissione automatica (Stripe/carta): non modificabile né
+    /// eliminabile a mano. Mostra una nota e, se collega un appuntamento, un link rapido.
+    @ViewBuilder private func automaticFeeRow(_ expense: Expense) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(expense.name).font(.body)
-                    if showsDate {
-                        Text(BusinessFormatting.day(expense.date))
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text("Dal \(BusinessFormatting.day(expense.date))")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+                    Text(BusinessFormatting.day(expense.date))
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Text(Money.format(expense.amountCents)).monospacedDigit()
             }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .swipeActions {
-            Button("Elimina", role: .destructive) { delete(expense) }
+            if let session = session(for: expense) {
+                NavigationLink {
+                    SessionDetailView(session: session)
+                } label: {
+                    Label("Relativa a un appuntamento — modifica o elimina l'appuntamento per rimuoverla",
+                          systemImage: "link")
+                        .font(.caption)
+                }
+                .accessibilityIdentifier("expenses.fee.link.\(expense.id.uuidString)")
+            } else {
+                Label("Commissione automatica: si rimuove modificando o eliminando l'incasso collegato.",
+                      systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .accessibilityIdentifier("expenses.row.\(expense.id.uuidString)")
     }

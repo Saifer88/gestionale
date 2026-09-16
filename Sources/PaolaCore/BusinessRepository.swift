@@ -324,7 +324,15 @@ public final class BusinessRepository {
 
     public func deleteExpense(_ id: UUID) throws {
         try transact { writer in
-            writer.delete(try find(id, in: writer, type: Expense.self, name: "Spesa"))
+            let expense = try find(id, in: writer, type: Expense.self, name: "Spesa")
+            // Le commissioni automatiche (Stripe/carta) sono idempotenti rispetto
+            // all'incasso di origine: si eliminano solo modificando o eliminando
+            // l'appuntamento (o il pacchetto), mai a mano.
+            guard !expense.isAutomaticFee else {
+                throw BusinessError.invalidInput(
+                    "Questa spesa è la commissione di un pagamento elettronico e non può essere eliminata direttamente. Modifica o elimina l'appuntamento (o il pacchetto) collegato.")
+            }
+            writer.delete(expense)
         }
     }
 
