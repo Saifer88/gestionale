@@ -1,4 +1,5 @@
 import PaolaCore
+import PaolaCore
 import SwiftData
 import SwiftUI
 
@@ -9,14 +10,18 @@ struct OverviewView: View {
     @Query private var participants: [SessionParticipant]
     @Query private var blocks: [Unavailability]
     @Query private var expenses: [Expense]
+    @Query private var packages: [LessonPackage]
     let addClient: () -> Void
+    @Environment(\.modelContext) private var context
     @State private var creatingSession = false
     @State private var creatingPackage = false
+    @State private var payingClient: UnpaidClientSummary?
+    @State private var operation = BusinessOperation()
 
     private var readError: Error? {
         let errors: [Error?] = [
             _clients.fetchError, _entries.fetchError, _sessions.fetchError, _participants.fetchError,
-            _blocks.fetchError, _expenses.fetchError
+            _blocks.fetchError, _expenses.fetchError, _packages.fetchError
         ]
         return errors.compactMap { $0 }.first
     }
@@ -34,13 +39,27 @@ struct OverviewView: View {
         .sectionTitle(.overview)
         .sheet(isPresented: $creatingSession) { SessionEditor() }
         .sheet(isPresented: $creatingPackage) { PackageEditor() }
+        .sheet(item: $payingClient) { client in
+            SettleUnpaidView(
+                clientName: client.clientName,
+                unpaid: BusinessReports.unpaidCompletedSessions(
+                    clientID: client.clientID, sessions: sessions, participants: participants),
+                onConfirm: { ids in settleSessions(ids) }
+            )
+        }
+        .businessError($operation)
+    }
+
+    private func settleSessions(_ ids: [UUID]) {
+        do { try BusinessRepository(context: context).setSessionsPaid(ids, true) }
+        catch { operation.capture(error) }
     }
 
     @ViewBuilder
     private func dashboard(at now: Date) -> some View {
         switch Result(catching: {
             try OverviewSummary(entries: entries, sessions: sessions, participants: participants,
-                                expenses: expenses, now: now)
+                                expenses: expenses, packages: packages, now: now)
         }) {
         case .failure(let error):
             ArchiveReadErrorView(error: error)
@@ -90,24 +109,135 @@ struct OverviewView: View {
 
     private func metricsColumn(_ summary: OverviewSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            metricGroup("Incassi", symbol: "arrow.down.circle.fill", tint: .green, rows: [
-                ("Settimana", Money.format(summary.income.weeklyCents), "overview.income.week"),
-                ("Mese", Money.format(summary.income.monthlyCents), "overview.income.month"),
-                ("Anno", Money.format(summary.income.annualCents), "overview.income.year"),
-                ("Futuri previsti", Money.format(summary.forecastCents), "overview.income.future")
-            ])
-            metricGroup("Spese", symbol: "arrow.up.circle.fill", tint: .orange, rows: [
-                ("Settimana", Money.format(summary.income.weeklyExpensesCents), "overview.expenses.week"),
-                ("Mese", Money.format(summary.income.monthlyExpensesCents), "overview.expenses.month"),
-                ("Anno", Money.format(summary.income.annualExpensesCents), "overview.expenses.year")
-            ])
-            metricGroup("EBIT", symbol: "chart.line.uptrend.xyaxis", tint: .blue, rows: [
-                ("Mese", Money.format(summary.income.monthlyEbitCents), "overview.ebit.month"),
-                ("Anno", Money.format(summary.income.annualEbitCents), "overview.ebit.year")
-            ])
+            // Incassi, Spese ed EBIT affiancati, con la stessa altezza.
+            HStack(alignment: .top, spacing: 12) {
+                metricGroup("Incassi", symbol: "arrow.down.circle.fill", tint: .green, rows: [
+                    ("Settimana", Money.format(summary.income.weeklyCents), "overview.income.week"),
+                    ("Mese", Money.format(summary.income.monthlyCents), "overview.income.month"),
+                    ("Anno", Money.format(summary.income.annualCents), "overview.income.year"),
+                    ("Futuri previsti", Money.format(summary.forecastCents), "overview.income.future")
+                ])
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                metricGroup("Spese", symbol: "arrow.up.circle.fill", tint: .orange, rows: [
+                    ("Settimana", Money.format(summary.income.weeklyExpensesCents), "overview.expenses.week"),
+                    ("Mese", Money.format(summary.income.monthlyExpensesCents), "overview.expenses.month"),
+                    ("Anno", Money.format(summary.income.annualExpensesCents), "overview.expenses.year"),
+                    ("Futuri previsti", Money.format(summary.income.futureExpensesCents), "overview.expenses.future")
+                ])
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                metricGroup("EBIT", symbol: "chart.line.uptrend.xyaxis", tint: .blue, rows: [
+                    ("Mese", Money.format(summary.income.monthlyEbitCents), "overview.ebit.month"),
+                    ("Anno", Money.format(summary.income.annualEbitCents), "overview.ebit.year")
+                ])
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            // Netto a tutta larghezza.
+            netGroup(summary)
+            unpaidGroup(summary.unpaidByClient)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("overview.metrics")
+    }
+
+    /// Gruppo "Netto" a tutta larghezza: neri, bianchi, INPS, imposte in colonne strette
+    /// e la colonna finale Netto grande (come i contatori) così risalta. Righe mese/anno.
+    private func netGroup(_ summary: OverviewSummary) -> some View {
+        // Colonne "minori" (strette), poi la colonna Netto evidenziata a parte.
+        let minorColumns: [(String, KeyPath<TaxBreakdown, Int64>)] = [
+            ("Neri", \.blackCents), ("Bianchi", \.whiteCents),
+            ("INPS", \.inpsCents), ("Imposte", \.taxCents)
+        ]
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Netto", systemImage: "building.columns.fill")
+                    .font(.headline).foregroundStyle(.purple)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                netRow(label: "", minor: minorColumns.map(\.0), net: "Netto", isHeader: true)
+                netRow(label: "Mese",
+                       minor: minorColumns.map { euroLabel(summary.income.monthlyTax[keyPath: $0.1]) },
+                       net: Money.format(summary.income.monthlyTax.netCents))
+                    .accessibilityIdentifier("overview.net.month")
+                netRow(label: "Anno",
+                       minor: minorColumns.map { euroLabel(summary.income.annualTax[keyPath: $0.1]) },
+                       net: Money.format(summary.income.annualTax.netCents))
+                    .accessibilityIdentifier("overview.net.year")
+            }
+            .padding(.vertical, 6)
+        }
+        .backgroundStyle(Color.purple.opacity(0.08))
+        .accessibilityIdentifier("overview.net")
+    }
+
+    /// Una riga della tabella Netto: etichetta + colonne minori strette + colonna Netto
+    /// grande (evidenziata). La colonna Netto usa un font maggiore, come i contatori.
+    private func netRow(label: String, minor: [String], net: String, isHeader: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .leading)
+            ForEach(Array(minor.enumerated()), id: \.offset) { _, value in
+                Text(value)
+                    .font(isHeader ? .caption2.weight(.semibold) : .caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            // Colonna Netto: larga e in risalto.
+            Text(net)
+                .font(isHeader ? .subheadline.weight(.semibold) : .title3.weight(.semibold))
+                .foregroundStyle(isHeader ? Color.secondary : Color.purple)
+                .monospacedDigit()
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .frame(width: 150, alignment: .trailing)
+        }
+    }
+
+    /// Gruppo "Da incassare": clienti con lezioni completate non pagate e residuo.
+    @ViewBuilder
+    private func unpaidGroup(_ clients: [UnpaidClientSummary]) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Da incassare", systemImage: "exclamationmark.circle.fill")
+                    .font(.headline).foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if clients.isEmpty {
+                    Text("Nessuna lezione completata da incassare.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(clients) { client in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(client.clientName.isEmpty ? "Cliente" : client.clientName).font(.body)
+                                Text("\(client.sessionCount) \(client.sessionCount == 1 ? "lezione" : "lezioni")")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(Money.format(client.residualCents))
+                                .font(.title3.weight(.semibold)).monospacedDigit()
+                                .foregroundStyle(.red)
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                            Button {
+                                payingClient = client
+                            } label: {
+                                Label("Salda", systemImage: "eurosign.circle.fill")
+                            }
+                            .labelStyle(.titleAndIcon)
+                            .buttonStyle(.borderless)
+                            .tint(.green)
+                            .help("Segna come pagate tutte le lezioni di \(client.clientName)")
+                            .accessibilityIdentifier("overview.unpaid.settle.\(client.clientID.uuidString)")
+                        }
+                        .accessibilityIdentifier("overview.unpaid.\(client.clientID.uuidString)")
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .backgroundStyle(Color.red.opacity(0.08))
+        .accessibilityIdentifier("overview.unpaid")
     }
 
     private func metricGroup(_ title: String, symbol: String, tint: Color,
@@ -300,4 +430,59 @@ struct OverviewView: View {
             .accessibilityIdentifier("overview.newPackage")
     }
 
+}
+
+/// Conferma per saldare in blocco le lezioni completate non pagate di un cliente.
+/// Mostra l'elenco delle lezioni che verranno impostate come pagate e il totale.
+private struct SettleUnpaidView: View {
+    @Environment(\.dismiss) private var dismiss
+    let clientName: String
+    let unpaid: [UnpaidSession]
+    let onConfirm: ([UUID]) -> Void
+
+    private var totalCents: Int64 { unpaid.reduce(0) { $0 + $1.residualCents } }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(unpaid) { session in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(session.serviceName.isEmpty ? "Appuntamento" : session.serviceName)
+                                Text(BusinessFormatting.day(session.date))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(Money.format(session.residualCents)).monospacedDigit()
+                        }
+                    }
+                    LabeledContent("Totale") {
+                        Text(Money.format(totalCents)).monospacedDigit().font(.headline)
+                            .foregroundStyle(.orange)
+                    }
+                } header: {
+                    Text("Lezioni da segnare come pagate")
+                } footer: {
+                    Text("Le seguenti lezioni completate di \(clientName) verranno impostate come pagate, azzerando l'importo da incassare.")
+                }
+            }
+            .navigationTitle("Segna come pagate")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annulla") { dismiss() }.keyboardShortcut(.cancelAction)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Conferma") {
+                        onConfirm(unpaid.map(\.sessionID))
+                        dismiss()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(unpaid.isEmpty)
+                    .accessibilityIdentifier("overview.unpaid.settle.confirm")
+                }
+            }
+        }
+        .businessEditorSize()
+    }
 }

@@ -9,6 +9,49 @@ public struct PaymentAllocation: Equatable {
     }
 }
 
+/// Un appuntamento completato con addebito non ancora saldato e il relativo residuo.
+public struct UnpaidSession: Identifiable, Equatable {
+    public let sessionID: UUID
+    public let clientID: UUID
+    public let clientName: String
+    public let date: Date
+    public let serviceName: String
+    public let residualCents: Int64
+    public var id: UUID { sessionID }
+    public init(sessionID: UUID, clientID: UUID, clientName: String, date: Date,
+                serviceName: String, residualCents: Int64) {
+        self.sessionID = sessionID; self.clientID = clientID; self.clientName = clientName
+        self.date = date; self.serviceName = serviceName; self.residualCents = residualCents
+    }
+}
+
+/// Ripartizione fiscale degli incassi di un periodo (importi in centesimi).
+public struct TaxBreakdown: Equatable {
+    public let blackCents: Int64
+    public let whiteCents: Int64
+    public let inpsCents: Int64
+    public let taxCents: Int64
+    public let netCents: Int64
+    public var totalCents: Int64 { blackCents + whiteCents }
+    public init(blackCents: Int64, whiteCents: Int64, inpsCents: Int64, taxCents: Int64, netCents: Int64) {
+        self.blackCents = blackCents; self.whiteCents = whiteCents
+        self.inpsCents = inpsCents; self.taxCents = taxCents; self.netCents = netCents
+    }
+}
+
+/// Riepilogo per cliente delle lezioni completate non pagate.
+public struct UnpaidClientSummary: Identifiable, Equatable {
+    public let clientID: UUID
+    public let clientName: String
+    public let sessionCount: Int
+    public let residualCents: Int64
+    public var id: UUID { clientID }
+    public init(clientID: UUID, clientName: String, sessionCount: Int, residualCents: Int64) {
+        self.clientID = clientID; self.clientName = clientName
+        self.sessionCount = sessionCount; self.residualCents = residualCents
+    }
+}
+
 public struct AccountStatement {
     public let openingBalance: Int64
     public let closingBalance: Int64
@@ -184,6 +227,60 @@ public enum BusinessReports {
         net(canonicalEntries(entries).filter { $0.clientID == clientID })
     }
 
+    /// Importo "da incassare" di un appuntamento per un cliente: il prezzo concordato
+    /// dei partecipanti senza pacchetto (le lezioni coperte da pacchetto non hanno
+    /// importo da incassare). Somma se il cliente compare più volte (deduplicato).
+    private static func sessionDueCents(sessionID: UUID, clientID: UUID,
+                                        participants: [SessionParticipant]) -> Int64 {
+        var seen = Set<UUID>()
+        return participants
+            .filter { $0.sessionID == sessionID && $0.clientID == clientID && $0.packageID == nil }
+            .filter { seen.insert($0.id).inserted }
+            .reduce(Int64(0)) { saturatedAdd($0, max(0, $1.priceCents)) }
+    }
+
+    /// Appuntamenti completati e contrassegnati come NON pagati (`isPaid == false`) di
+    /// un cliente, con l'importo da incassare di ciascuno. Il "pagato" è il flag manuale
+    /// dell'appuntamento, non un calcolo dai movimenti. Ordinati per data.
+    public static func unpaidCompletedSessions(clientID: UUID, sessions: [TrainingSession],
+                                               participants: [SessionParticipant]) -> [UnpaidSession] {
+        let clientSessionIDs = Set(participants.filter { $0.clientID == clientID }.map(\.sessionID))
+        var result: [UnpaidSession] = []
+        for session in sessions
+        where session.status == .completed && !session.isPaid && clientSessionIDs.contains(session.id) {
+            let due = sessionDueCents(sessionID: session.id, clientID: clientID, participants: participants)
+            // Escludi le lezioni senza importo da incassare (interamente coperte da
+            // pacchetto o a prezzo zero): non sono un debito del cliente.
+            guard due > 0 else { continue }
+            let name = participants.first { $0.sessionID == session.id && $0.clientID == clientID }?.clientName ?? ""
+            result.append(UnpaidSession(sessionID: session.id, clientID: clientID,
+                                        clientName: name, date: session.startDate,
+                                        serviceName: session.serviceName, residualCents: due))
+        }
+        return result.sorted { $0.date < $1.date }
+    }
+
+    /// Clienti con appuntamenti completati non pagati (`isPaid == false`) e importo
+    /// totale da incassare, ordinati per importo decrescente. Utile per la panoramica.
+    public static func unpaidCompletedByClient(sessions: [TrainingSession],
+                                               participants: [SessionParticipant]) -> [UnpaidClientSummary] {
+        let completedUnpaidIDs = Set(sessions.filter { $0.status == .completed && !$0.isPaid }.map(\.id))
+        let clientIDs = Set(participants.filter { completedUnpaidIDs.contains($0.sessionID) }.map(\.clientID))
+        var summaries: [UnpaidClientSummary] = []
+        for clientID in clientIDs {
+            let unpaid = unpaidCompletedSessions(clientID: clientID, sessions: sessions, participants: participants)
+            guard !unpaid.isEmpty else { continue }
+            let total = unpaid.reduce(Int64(0)) { saturatedAdd($0, $1.residualCents) }
+            summaries.append(UnpaidClientSummary(clientID: clientID, clientName: unpaid.first?.clientName ?? "",
+                                                 sessionCount: unpaid.count, residualCents: total))
+        }
+        return summaries.sorted {
+            $0.residualCents == $1.residualCents
+                ? $0.clientName.localizedStandardCompare($1.clientName) == .orderedAscending
+                : $0.residualCents > $1.residualCents
+        }
+    }
+
     public static func remaining(package: LessonPackage, uses: [PackageUse]) -> Int {
         max(0, package.capacity - used(package: package, uses: uses))
     }
@@ -313,5 +410,83 @@ public enum BusinessReports {
     private static func saturatedAdd(_ lhs: Int64, _ rhs: Int64) -> Int64 {
         let result = lhs.addingReportingOverflow(rhs)
         return result.overflow ? Int64.max : result.partialValue
+    }
+
+    /// Ripartizione fiscale degli incassi netti di un periodo, separati in bianchi e
+    /// neri secondo il contrassegno contabile della prestazione di origine.
+    ///
+    /// - Incassi neri/bianchi: pagamenti (al netto dei rimborsi collegati) la cui
+    ///   prestazione di origine ha `isBlack` true/false. La prestazione è la sessione
+    ///   (sourceKey `income:session:...`) o il pacchetto (sourceKey `income:package:...`).
+    /// - inps = (bianchi × 0,78) × 0,2607
+    /// - imposte = ((bianchi × 0,78) − inps) × 0,05
+    /// - netto = neri + bianchi − (inps + imposte + spese)
+    /// `expensesCents` sono le spese del periodo (già calcolate a monte). Gli importi
+    /// sono in centesimi; le quote fiscali sono arrotondate al centesimo.
+    public static func taxSummary(from: Date, to: Date, entries: [LedgerEntry],
+                                  sessions: [TrainingSession], packages: [LessonPackage],
+                                  expensesCents: Int64 = 0) -> TaxBreakdown {
+        let canonical = canonicalEntries(entries)
+        // Lookup per risalire dalla chiave d'incasso (sourceKey) al colore della
+        // prestazione: la chiave sessione include il clientID, quindi indicizziamo per id.
+        let sessionByID = Dictionary(sessions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let packageByID = Dictionary(packages.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        func isBlackForPayment(_ sourceKey: String) -> Bool? {
+            let key = sourceKey.lowercased()
+            let sessionPrefix = "income:session:"
+            let packagePrefix = "income:package:"
+            if key.hasPrefix(sessionPrefix) {
+                let rest = key.dropFirst(sessionPrefix.count)
+                let first = rest.split(separator: ":", omittingEmptySubsequences: false).first.map(String.init) ?? ""
+                if let id = UUID(uuidString: first) { return sessionByID[id]?.isBlack }
+            } else if key.hasPrefix(packagePrefix) {
+                let rest = key.dropFirst(packagePrefix.count)
+                let idString = String(rest)
+                if let id = UUID(uuidString: idString) { return packageByID[id]?.isBlack }
+            }
+            return nil
+        }
+
+        // Rimborsi collegati a ciascun pagamento (per id del pagamento originale).
+        var refundByPaymentID: [UUID: Int64] = [:]
+        for entry in canonical where entry.kind == .refund {
+            if let original = entry.originalEntryID {
+                refundByPaymentID[original] = saturatedAdd(refundByPaymentID[original] ?? 0, max(0, entry.amountCents))
+            }
+        }
+
+        var blackCents: Int64 = 0
+        var whiteCents: Int64 = 0
+        for payment in canonical
+        where payment.kind == .payment && payment.date >= from && payment.date < to {
+            let refunded = min(max(0, payment.amountCents), refundByPaymentID[payment.id] ?? 0)
+            let netCents = max(0, payment.amountCents - refunded)
+            guard netCents > 0 else { continue }
+            // Colore dalla prestazione; se ignoto, considera bianco (prudenziale ai fini fiscali).
+            let black = isBlackForPayment(payment.sourceKey) ?? false
+            if black { blackCents = saturatedAdd(blackCents, netCents) }
+            else { whiteCents = saturatedAdd(whiteCents, netCents) }
+        }
+
+        let whiteImponibile = Decimal(whiteCents) * Decimal(string: "0.78")!
+        let inps = whiteImponibile * Decimal(string: "0.2607")!
+        let imposte = (whiteImponibile - inps) * Decimal(string: "0.05")!
+        let inpsCents = roundedCents(inps)
+        let imposteCents = roundedCents(imposte)
+        let netCents = blackCents + whiteCents - (inpsCents + imposteCents + max(0, expensesCents))
+
+        return TaxBreakdown(blackCents: blackCents, whiteCents: whiteCents,
+                            inpsCents: inpsCents, taxCents: imposteCents, netCents: netCents)
+    }
+
+    /// Arrotonda un importo in centesimi (Decimal) all'intero più vicino, saturando su Int64.
+    private static func roundedCents(_ value: Decimal) -> Int64 {
+        var input = value
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &input, 0, .plain)
+        if rounded > Decimal(Int64.max) { return Int64.max }
+        if rounded < Decimal(Int64.min) { return Int64.min }
+        return NSDecimalNumber(decimal: rounded).int64Value
     }
 }

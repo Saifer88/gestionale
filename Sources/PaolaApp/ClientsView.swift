@@ -5,6 +5,8 @@ import SwiftUI
 struct ClientsView: View {
     @Query(sort: [SortDescriptor(\Client.lastName), SortDescriptor(\Client.firstName)])
     private var clients: [Client]
+    @Query private var sessions: [TrainingSession]
+    @Query private var participants: [SessionParticipant]
     @State private var searchText = ""
     @State private var filter: ClientFilter = .active
     @State private var showingNewClient = false
@@ -13,13 +15,35 @@ struct ClientsView: View {
         clients.filter { ClientSearch.matches($0, query: searchText, filter: filter) }
     }
 
+    /// Importo "da incassare" (appuntamenti completati non pagati) per cliente.
+    private var unpaidByClient: [UUID: UnpaidClientSummary] {
+        Dictionary(
+            BusinessReports.unpaidCompletedByClient(sessions: sessions, participants: participants)
+                .map { ($0.clientID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
     var body: some View {
-        if let error = _clients.fetchError {
+        if let error = _clients.fetchError ?? _sessions.fetchError ?? _participants.fetchError {
             ArchiveReadErrorView(error: error)
                 .navigationTitle("Clienti")
         } else {
             clientList
         }
+    }
+
+    /// Badge "da incassare" con importo e numero di lezioni completate non pagate.
+    private func unpaidBadge(_ due: UnpaidClientSummary) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(Money.format(due.residualCents))
+                .font(.subheadline.weight(.semibold)).monospacedDigit()
+                .foregroundStyle(.orange)
+            Text("\(due.sessionCount) da incassare")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("clients.unpaid.\(due.clientID.uuidString)")
     }
 
     private var clientList: some View {
@@ -48,6 +72,7 @@ struct ClientsView: View {
                 }
                 .frame(maxHeight: .infinity)
             } else {
+                let unpaid = unpaidByClient
                 List(filteredClients) { client in
                     NavigationLink {
                         ClientDetailView(client: client)
@@ -68,6 +93,9 @@ struct ClientsView: View {
                                 }
                             }
                             Spacer()
+                            if let due = unpaid[client.id] {
+                                unpaidBadge(due)
+                            }
                             if client.isArchived {
                                 Label("Archiviato", systemImage: "archivebox")
                                     .font(.caption)

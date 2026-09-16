@@ -244,6 +244,74 @@ public final class BusinessRepository {
         }
     }
 
+    /// Elimina un appuntamento, anche se completato, rimuovendo tutti gli effetti
+    /// economici collegati: addebiti e incassi (charge/payment) dei partecipanti senza
+    /// pacchetto, consumi di pacchetto (PackageUse), commissioni automatiche (Expense-fee)
+    /// e gli eventuali storni (refund/credit) che li referenziano. Rimuove infine i
+    /// partecipanti e la sessione. Operazione unica e transazionale.
+    ///
+    /// Nota di prodotto: le sedute completate sono normalmente "congelate", ma
+    /// l'eliminazione è un'azione esplicita dell'utente che disfa l'intera prestazione
+    /// (non una modifica retroattiva silenziosa dei valori).
+    public func deleteSession(_ id: UUID) throws {
+        try transact { writer in
+            let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
+            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>())
+                .filter { $0.sessionID == id }
+
+            // sourceKey dei movimenti generati dal completamento, per ciascun partecipante.
+            var chargeSources = Set<String>()      // addebito lezione singola
+            var incomeSources = Set<String>()       // incasso lezione singola
+            var feeSources = Set<String>()          // commissione automatica (Expense)
+            for participant in participants {
+                chargeSources.insert(BusinessRules.sessionSource(sessionID: id, clientID: participant.clientID).lowercased())
+                incomeSources.insert(BusinessRules.sessionIncomeSource(sessionID: id, clientID: participant.clientID).lowercased())
+                feeSources.insert(Expense.sessionFeeSourceKey(sessionID: id, clientID: participant.clientID).lowercased())
+            }
+
+            let allEntries = try writer.fetch(FetchDescriptor<LedgerEntry>())
+            // Movimenti diretti (charge/payment) generati dalla sessione.
+            let directIDs = Set(allEntries.filter {
+                let key = $0.sourceKey.lowercased()
+                return chargeSources.contains(key) || incomeSources.contains(key)
+            }.map(\.id))
+            // Storni (refund/credit) che referenziano quei movimenti: senza l'origine
+            // non hanno più significato, quindi vanno rimossi anch'essi.
+            for entry in allEntries {
+                let key = entry.sourceKey.lowercased()
+                let isDirect = chargeSources.contains(key) || incomeSources.contains(key)
+                let isAdjustmentOfDirect = entry.originalEntryID.map(directIDs.contains) == true
+                if isDirect || isAdjustmentOfDirect {
+                    writer.delete(entry)
+                }
+            }
+
+            // Consumi di pacchetto della sessione.
+            for use in try writer.fetch(FetchDescriptor<PackageUse>()) where use.sessionID == id {
+                writer.delete(use)
+            }
+
+            // Commissioni automatiche della sessione (bypassa il blocco manuale: qui
+            // stiamo eliminando l'origine, che è lo scenario ammesso).
+            for expense in try writer.fetch(FetchDescriptor<Expense>())
+            where feeSources.contains(expense.sourceKey.lowercased()) {
+                writer.delete(expense)
+            }
+
+            // Fatture collegate all'appuntamento (documenti informativi).
+            for participant in participants {
+                let invoiceSource = Invoice.sessionSourceKey(sessionID: id, clientID: participant.clientID).lowercased()
+                for invoice in try writer.fetch(FetchDescriptor<Invoice>())
+                where invoice.sourceKey.lowercased() == invoiceSource {
+                    writer.delete(invoice)
+                }
+            }
+
+            for participant in participants { writer.delete(participant) }
+            writer.delete(session)
+        }
+    }
+
     /// Sposta un appuntamento a un nuovo orario di inizio mantenendone la durata.
     /// Usato dal trascinamento (drag & drop) nel calendario.
     ///
@@ -275,6 +343,21 @@ public final class BusinessRepository {
             if session.isPaid == paid { return }
             session.isPaid = paid
             session.updatedAt = Date()
+        }
+    }
+
+    /// Imposta il contrassegno "pagato" su più appuntamenti in un'unica transazione.
+    /// Usato per saldare in blocco le lezioni non pagate di un cliente.
+    public func setSessionsPaid(_ ids: [UUID], _ paid: Bool) throws {
+        guard !ids.isEmpty else { return }
+        try transact { writer in
+            let now = Date()
+            for id in ids {
+                let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
+                if session.isPaid == paid { continue }
+                session.isPaid = paid
+                session.updatedAt = now
+            }
         }
     }
 

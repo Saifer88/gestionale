@@ -9,13 +9,21 @@ struct IncomeSummary {
     let annualExpensesCents: Int64
     let monthlyExpensesCents: Int64
     let weeklyExpensesCents: Int64
+    // Spese future previste dell'anno in corso: dai mesi successivi a quello corrente
+    // fino a fine anno (ricorrenti mensili e una tantum già datate nel futuro).
+    let futureExpensesCents: Int64
 
     // EBIT = incassi − spese del periodo.
     var annualEbitCents: Int64 { annualCents - annualExpensesCents }
     var monthlyEbitCents: Int64 { monthlyCents - monthlyExpensesCents }
     var weeklyEbitCents: Int64 { weeklyCents - weeklyExpensesCents }
 
+    // Ripartizione fiscale (bianchi/neri/inps/imposte/netto) mensile e annuale.
+    let monthlyTax: TaxBreakdown
+    let annualTax: TaxBreakdown
+
     init(entries: [LedgerEntry], expenses: [Expense] = [],
+         sessions: [TrainingSession] = [], packages: [LessonPackage] = [],
          now: Date = Date(), calendar: Calendar = SchedulingSuggestions.calendar) throws {
         guard now.timeIntervalSinceReferenceDate.isFinite,
               let year = calendar.dateInterval(of: .year, for: now),
@@ -38,5 +46,16 @@ struct IncomeSummary {
                                                    to: min(year.end, month.end), calendar: calendar)
         monthlyExpensesCents = spent(month)
         weeklyExpensesCents = spent(week)
+        // Spese future previste dell'anno: dal mese prossimo a fine anno.
+        futureExpensesCents = ExpenseReports.total(expenses, from: min(month.end, year.end),
+                                                   to: year.end, calendar: calendar)
+        // Ripartizione fiscale degli incassi del mese e dell'anno; il netto sottrae
+        // anche le spese del periodo (annuali cappate al mese corrente, come sopra).
+        monthlyTax = BusinessReports.taxSummary(from: month.start, to: month.end,
+                                                entries: entries, sessions: sessions, packages: packages,
+                                                expensesCents: monthlyExpensesCents)
+        annualTax = BusinessReports.taxSummary(from: year.start, to: year.end,
+                                               entries: entries, sessions: sessions, packages: packages,
+                                               expensesCents: annualExpensesCents)
     }
 }

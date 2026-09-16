@@ -560,12 +560,14 @@ struct AgendaView: View {
 
 struct SessionDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     let session: TrainingSession
     @Query private var participants: [SessionParticipant]
     @Query private var clients: [Client]
     @Query private var sessions: [TrainingSession]
     @State private var editing = false
     @State private var pendingStatus: SessionStatus?
+    @State private var confirmingDelete = false
     @State private var operation = BusinessOperation()
 
     private var people: [SessionParticipant] { participants.filter { $0.sessionID == session.id } }
@@ -697,8 +699,36 @@ struct SessionDetailView: View {
                         .disabled(operation.committed)
                 }
             }
+            Section {
+                Button("Elimina appuntamento", systemImage: "trash", role: .destructive) {
+                    confirmingDelete = true
+                }
+                .disabled(operation.committed)
+                .accessibilityIdentifier("session.delete")
+            } footer: {
+                Text(session.status == .completed
+                     ? "L'eliminazione rimuove l'appuntamento e disfa gli effetti economici collegati (addebito, incasso, commissioni, consumo pacchetto)."
+                     : "L'eliminazione rimuove l'appuntamento e ogni movimento eventualmente collegato.")
+            }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Eliminare l'appuntamento?", isPresented: $confirmingDelete,
+                            titleVisibility: .visible) {
+            Button("Elimina", role: .destructive) { deleteSession() }
+                .accessibilityIdentifier("session.confirmDelete")
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text(session.status == .completed
+                 ? "Verranno rimossi anche addebiti, incassi, commissioni automatiche ed eventuali consumi di pacchetto di questa lezione. L'azione non è reversibile."
+                 : "L'appuntamento verrà rimosso. L'azione non è reversibile.")
+        }
+    }
+
+    private func deleteSession() {
+        do {
+            try BusinessRepository(context: context).deleteSession(session.id)
+            dismiss()
+        } catch { operation.capture(error) }
     }
 
     private var confirmationTitle: String {

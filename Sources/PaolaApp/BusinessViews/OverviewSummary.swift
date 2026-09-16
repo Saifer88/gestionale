@@ -30,13 +30,16 @@ struct OverviewSummary {
     let upcoming: [UpcomingDay]
     /// Totale appuntamenti futuri (da oggi in poi, non annullati).
     let futureAppointmentsCount: Int
+    /// Clienti con lezioni completate non pagate e residuo, per la panoramica.
+    let unpaidByClient: [UnpaidClientSummary]
 
     init(
         entries: [LedgerEntry], sessions: [TrainingSession], participants: [SessionParticipant],
-        expenses: [Expense] = [],
+        expenses: [Expense] = [], packages: [LessonPackage] = [],
         now: Date = Date(), calendar: Calendar = SchedulingSuggestions.calendar
     ) throws {
-        income = try IncomeSummary(entries: entries, expenses: expenses, now: now, calendar: calendar)
+        income = try IncomeSummary(entries: entries, expenses: expenses, sessions: sessions,
+                                   packages: packages, now: now, calendar: calendar)
         guard let week = calendar.dateInterval(of: .weekOfYear, for: now),
               let day = calendar.dateInterval(of: .day, for: now) else {
             throw SchedulingError.invalidDate
@@ -64,6 +67,8 @@ struct OverviewSummary {
             }
             return UpcomingDay(date: dayKey, sessions: items)
         }
+
+        unpaidByClient = BusinessReports.unpaidCompletedByClient(sessions: sessions, participants: participants)
 
         let futureIDs = Set(planned.filter { $0.startDate > now }.map(\.id))
         var forecast: Int64 = 0
