@@ -13,12 +13,23 @@ enum CalendarAppointments {
     }
 }
 
+/// Un giorno con i suoi appuntamenti, per l'elenco "prossimi appuntamenti".
+struct UpcomingDay: Identifiable {
+    let date: Date
+    let sessions: [TrainingSession]
+    var id: TimeInterval { date.timeIntervalSinceReferenceDate }
+}
+
 struct OverviewSummary {
     let income: IncomeSummary
     let forecastCents: Int64
     let bookedClientsThisWeek: Int
     let plannedSessionsThisWeek: Int
     let today: [TrainingSession]
+    /// Prossimi appuntamenti (da oggi in poi, non annullati) raggruppati per giorno.
+    let upcoming: [UpcomingDay]
+    /// Totale appuntamenti futuri (da oggi in poi, non annullati).
+    let futureAppointmentsCount: Int
 
     init(
         entries: [LedgerEntry], sessions: [TrainingSession], participants: [SessionParticipant],
@@ -35,6 +46,24 @@ struct OverviewSummary {
         plannedSessionsThisWeek = weeklyIDs.count
         bookedClientsThisWeek = Set(participants.filter { weeklyIDs.contains($0.sessionID) }.map(\.clientID)).count
         today = CalendarAppointments.visible(sessions, in: day)
+
+        // Appuntamenti futuri (da oggi in poi, non annullati): usati per il contatore.
+        let dayStart = day.start
+        let futureSessions = sessions.filter {
+            $0.statusRaw != SessionStatus.cancelled.rawValue && $0.startDate >= dayStart
+        }
+        futureAppointmentsCount = futureSessions.count
+
+        // Elenco "prossimi appuntamenti": solo oggi e domani, raggruppati per giorno.
+        let tomorrowEnd = calendar.date(byAdding: .day, value: 2, to: dayStart) ?? day.end
+        let upcomingSessions = futureSessions.filter { $0.startDate < tomorrowEnd }
+        let grouped = Dictionary(grouping: upcomingSessions) { calendar.startOfDay(for: $0.startDate) }
+        upcoming = grouped.keys.sorted().map { dayKey in
+            let items = grouped[dayKey]!.sorted {
+                $0.startDate == $1.startDate ? $0.id.uuidString < $1.id.uuidString : $0.startDate < $1.startDate
+            }
+            return UpcomingDay(date: dayKey, sessions: items)
+        }
 
         let futureIDs = Set(planned.filter { $0.startDate > now }.map(\.id))
         var forecast: Int64 = 0
