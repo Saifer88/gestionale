@@ -177,7 +177,8 @@ public enum BusinessReports {
         var packagesByID: [UUID: LessonPackage] = [:]
         for package in packages {
             packagesByID[package.id] = package
-            if (try? BusinessRules.packageCapacity(package.capacity)) == nil || package.priceCents < 0 {
+            if (package.kind != .timed && (try? BusinessRules.packageCapacity(package.capacity)) == nil)
+                || package.priceCents < 0 {
                 warn("Un pacchetto ha capienza o prezzo non validi.")
             }
             let source = BusinessRules.packageSource(package.id)
@@ -212,7 +213,7 @@ public enum BusinessReports {
                 warn("Un utilizzo fa riferimento a un pacchetto mancante.")
             }
         }
-        for package in packages {
+        for package in packages where package.kind != .timed {
             let count = Set(uses.filter { $0.packageID == package.id }.map {
                 BusinessRules.sessionSource(sessionID: $0.sessionID, clientID: $0.clientID)
             }).count

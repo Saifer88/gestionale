@@ -21,6 +21,8 @@ struct AgendaView: View {
     @Query private var clients: [Client]
     @Query private var blocks: [Unavailability]
     @Query private var packages: [LessonPackage]
+    @Query private var courses: [Course]
+    @Query private var courseParticipants: [CourseParticipant]
     @State private var period: AgendaPeriod = .week
     @State private var selectedDate = Date()
     @State private var status: SessionStatus?
@@ -76,7 +78,8 @@ struct AgendaView: View {
 
     var body: some View {
         Group {
-            if let error = _sessions.fetchError ?? _participants.fetchError ?? _clients.fetchError {
+            if let error = _sessions.fetchError ?? _participants.fetchError ?? _clients.fetchError
+                ?? _courses.fetchError ?? _courseParticipants.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
                 agenda
@@ -325,7 +328,12 @@ struct AgendaView: View {
             }
             .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
             VStack(alignment: .center, spacing: 8) {
-                accountingDot(for: session)
+                // Il pallino bianco/nero non si mostra se TUTTI i partecipanti usano un
+                // pacchetto: in quel caso il colore contabile è ereditato dal pacchetto.
+                // Con partecipanti misti resta attivo (si applica ai soli paganti diretti).
+                if !allParticipantsUsePackage(session) {
+                    accountingDot(for: session)
+                }
                 if session.status == .provisional {
                     // L'icona arancione (badge provvisorio) conferma l'appuntamento
                     // rendendolo programmato, direttamente e senza altre schermate.
@@ -347,6 +355,34 @@ struct AgendaView: View {
                     paidToggle(for: session) }
             }
         }
+    }
+
+    /// Card di un'occorrenza di corso in agenda: badge con icona dedicata, titolo,
+    /// orario e partecipanti visibili (pacchetto a tempo ancora valido a quella data).
+    @ViewBuilder private func courseCard(_ occurrence: CourseOccurrence) -> some View {
+        NavigationLink(value: AppRoute.course(occurrence.course.id)) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .foregroundStyle(.purple)
+                    .accessibilityLabel("Corso")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(occurrence.course.title.isEmpty ? "Corso" : occurrence.course.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(SchedulingSuggestions.hourLabel(occurrence.start)) – \(SchedulingSuggestions.hourLabel(occurrence.end))")
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    if !occurrence.participantNames.isEmpty {
+                        Text(occurrence.participantNames.joined(separator: ", "))
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                }
+                Spacer()
+            }
+            .padding(10)
+            .background(Color.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("agenda.course.\(occurrence.course.id.uuidString)")
     }
 
     @ViewBuilder private func completedIcon (for session: TrainingSession) -> some View {
@@ -441,6 +477,13 @@ struct AgendaView: View {
         catch { operation.capture(error) }
     }
 
+    /// True se ci sono partecipanti e TUTTI usano un pacchetto (colore ereditato dal
+    /// pacchetto, quindi il pallino bianco/nero non va mostrato).
+    private func allParticipantsUsePackage(_ session: TrainingSession) -> Bool {
+        let people = participants.filter { $0.sessionID == session.id }
+        return !people.isEmpty && people.allSatisfy { $0.packageID != nil }
+    }
+
     // MARK: - Drag & drop
 
     private func session(_ id: UUID) -> TrainingSession? { sessions.first { $0.id == id } }
@@ -454,7 +497,14 @@ struct AgendaView: View {
             draggedSessionID: draggingSessionID,
             draggedDurationMinutes: dragged?.durationMinutes ?? 60,
             sessions: visibleSessions,
-            blocks: blocks)
+            blocks: blocks,
+            courseOccurrences: courseOccurrences)
+    }
+
+    /// Occorrenze di corso (virtuali) che ricadono nell'intervallo visibile in agenda.
+    private var courseOccurrences: [CourseOccurrence] {
+        CourseOccurrences.expand(courses: courses, participants: courseParticipants,
+                                 packages: packages, in: interval)
     }
 
     /// Casella di una fascia oraria: mostra l'orario, gli appuntamenti che iniziano
@@ -470,6 +520,9 @@ struct AgendaView: View {
                 .frame(width: 44, alignment: .leading)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 6) {
+                ForEach(row.courses) { occurrence in
+                    courseCard(occurrence)
+                }
                 ForEach(row.sessions) { session in
                     itemRow(session)
                         .buttonStyle(.plain)

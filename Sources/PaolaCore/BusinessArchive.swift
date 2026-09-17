@@ -13,11 +13,14 @@ public struct BusinessArchive: Codable, Equatable {
     public var blocks: [BlockRecord] = []
     public var invoices: [InvoiceRecord] = []
     public var expenses: [ExpenseRecord] = []
+    public var courses: [CourseRecord] = []
+    public var courseParticipants: [CourseParticipantRecord] = []
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case services, rates, preferences, sessions, participants, packages, packageUses, ledgerEntries, blocks, invoices, expenses
+        case courses, courseParticipants
     }
 
     public init(from decoder: Decoder) throws {
@@ -33,12 +36,14 @@ public struct BusinessArchive: Codable, Equatable {
         blocks = try values.decode([BlockRecord].self, forKey: .blocks)
         invoices = try values.decodeIfPresent([InvoiceRecord].self, forKey: .invoices) ?? []
         expenses = try values.decodeIfPresent([ExpenseRecord].self, forKey: .expenses) ?? []
+        courses = try values.decodeIfPresent([CourseRecord].self, forKey: .courses) ?? []
+        courseParticipants = try values.decodeIfPresent([CourseParticipantRecord].self, forKey: .courseParticipants) ?? []
     }
 
     public var recordCount: Int {
         services.count + rates.count + sessions.count + participants.count + packages.count
             + packageUses.count + ledgerEntries.count + blocks.count + preferences.count + invoices.count
-            + expenses.count
+            + expenses.count + courses.count + courseParticipants.count
     }
 
     public func canonicalized() -> BusinessArchive {
@@ -54,6 +59,8 @@ public struct BusinessArchive: Codable, Equatable {
         archive.blocks.sort { $0.id.uuidString < $1.id.uuidString }
         archive.invoices.sort { $0.id.uuidString < $1.id.uuidString }
         archive.expenses.sort { $0.id.uuidString < $1.id.uuidString }
+        archive.courses.sort { $0.id.uuidString < $1.id.uuidString }
+        archive.courseParticipants.sort { $0.id.uuidString < $1.id.uuidString }
         return archive
     }
 
@@ -71,6 +78,8 @@ public struct BusinessArchive: Codable, Equatable {
         archive.blocks = try context.fetch(FetchDescriptor<Unavailability>()).map(BlockRecord.init)
         archive.invoices = try context.fetch(FetchDescriptor<Invoice>()).map(InvoiceRecord.init)
         archive.expenses = try context.fetch(FetchDescriptor<Expense>()).map(ExpenseRecord.init)
+        archive.courses = try context.fetch(FetchDescriptor<Course>()).map(CourseRecord.init)
+        archive.courseParticipants = try context.fetch(FetchDescriptor<CourseParticipant>()).map(CourseParticipantRecord.init)
         return archive.canonicalized()
     }
 
@@ -80,6 +89,7 @@ public struct BusinessArchive: Codable, Equatable {
         try unique(packageUses.map(\.id)); try unique(ledgerEntries.map(\.id)); try unique(blocks.map(\.id))
         try unique(preferences.map(\.id)); try unique(preferences.map(\.clientID))
         try unique(invoices.map(\.id)); try unique(expenses.map(\.id))
+        try unique(courses.map(\.id)); try unique(courseParticipants.map(\.id))
         let serviceIDs = Set(services.map(\.id))
         let sessionMap = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
         let packageMap = Dictionary(uniqueKeysWithValues: packages.map { ($0.id, $0) })
@@ -129,7 +139,10 @@ public struct BusinessArchive: Codable, Equatable {
         }
         for package in packages {
             try require(clientIDs.contains(package.clientID), "Cliente del pacchetto mancante.")
-            try BusinessRules.packageCapacity(package.capacity)
+            // La capienza si valida solo per i pacchetti a lezioni; quelli a tempo sono illimitati.
+            if PackageKind(rawValue: package.kindRaw) != .timed {
+                try BusinessRules.packageCapacity(package.capacity)
+            }
             try BusinessRules.amount(package.priceCents); try BusinessRules.date(package.purchasedOn)
             if let expiry = package.expiresOn {
                 try BusinessRules.date(expiry)
@@ -166,7 +179,7 @@ public struct BusinessArchive: Codable, Equatable {
             }
             useSources[source] = use
         }
-        for package in packages {
+        for package in packages where PackageKind(rawValue: package.kindRaw) != .timed {
             try require(useSources.values.filter { $0.packageID == package.id }.count <= package.capacity,
                         "Il pacchetto supera il numero di lezioni disponibili.")
         }
@@ -297,6 +310,23 @@ public struct BusinessArchive: Codable, Equatable {
             try BusinessRules.amount(expense.amountCents)
             try require(ExpenseKind(rawValue: expense.kindRaw) != nil, "Tipo di spesa non valido.")
         }
+        // Corsi: titolo non vuoto, almeno un giorno, orario e durata validi, date finite.
+        let courseIDs = Set(courses.map(\.id))
+        for course in courses {
+            try require(!course.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "Titolo del corso mancante.")
+            try require(course.weekdaysMask != 0, "Il corso deve avere almeno un giorno.")
+            try require((0...23).contains(course.startHour) && (0...59).contains(course.startMinute),
+                        "Orario del corso non valido.")
+            try BusinessRules.duration(course.durationMinutes)
+            try BusinessRules.date(course.createdAt); try BusinessRules.date(course.updatedAt)
+        }
+        for participant in courseParticipants {
+            try require(courseIDs.contains(participant.courseID), "Corso del partecipante mancante.")
+            try require(clientIDs.contains(participant.clientID), "Cliente del partecipante corso mancante.")
+            if let packageID = participant.packageID, let package = packageMap[packageID] {
+                try require(package.clientID == participant.clientID, "Pacchetto del partecipante corso di un altro cliente.")
+            }
+        }
     }
 
     @MainActor
@@ -314,7 +344,9 @@ public struct BusinessArchive: Codable, Equatable {
             && Set(existing.ledgerEntries.map(\.id)).isDisjoint(with: ledgerEntries.map(\.id))
             && Set(existing.blocks.map(\.id)).isDisjoint(with: blocks.map(\.id))
             && Set(existing.invoices.map(\.id)).isDisjoint(with: invoices.map(\.id))
-            && Set(existing.expenses.map(\.id)).isDisjoint(with: expenses.map(\.id)),
+            && Set(existing.expenses.map(\.id)).isDisjoint(with: expenses.map(\.id))
+            && Set(existing.courses.map(\.id)).isDisjoint(with: courses.map(\.id))
+            && Set(existing.courseParticipants.map(\.id)).isDisjoint(with: courseParticipants.map(\.id)),
             "L'archivio contiene identificativi già presenti.")
         var combined = existing
         combined.services += services; combined.sessions += sessions; combined.participants += participants
@@ -324,6 +356,8 @@ public struct BusinessArchive: Codable, Equatable {
         combined.ledgerEntries += ledgerEntries; combined.blocks += blocks
         combined.invoices += invoices
         combined.expenses += expenses
+        combined.courses += courses
+        combined.courseParticipants += courseParticipants
         try combined.validate(clientIDs: clientIDs)
         for record in services { context.insert(record.model()) }
         for record in rates { context.insert(record.model()) }
@@ -336,6 +370,8 @@ public struct BusinessArchive: Codable, Equatable {
         for record in blocks { context.insert(record.model()) }
         for record in invoices { context.insert(record.model()) }
         for record in expenses { context.insert(record.model()) }
+        for record in courses { context.insert(record.model()) }
+        for record in courseParticipants { context.insert(record.model()) }
     }
 
     private func unique(_ ids: [UUID]) throws {
@@ -494,13 +530,14 @@ public struct BusinessArchive: Codable, Equatable {
         public var expiresOn: Date?
         public var notes: String
         public var paymentMethodRaw: String
+        public var kindRaw: String
         public var invoiceDate: Date?
         public var isBlack: Bool
         public init(_ value: LessonPackage) {
             id = value.id; clientID = value.clientID; clientName = value.clientName
             purchasedOn = value.purchasedOn; priceCents = value.priceCents; capacity = value.capacity
             expiresOn = value.expiresOn; notes = value.notes
-            paymentMethodRaw = value.paymentMethodRaw; invoiceDate = value.invoiceDate
+            paymentMethodRaw = value.paymentMethodRaw; kindRaw = value.kindRaw; invoiceDate = value.invoiceDate
             isBlack = value.isBlack
         }
         public init(from decoder: Decoder) throws {
@@ -514,13 +551,15 @@ public struct BusinessArchive: Codable, Equatable {
             expiresOn = try c.decodeIfPresent(Date.self, forKey: .expiresOn)
             notes = try c.decode(String.self, forKey: .notes)
             paymentMethodRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethodRaw) ?? "cash"
+            kindRaw = try c.decodeIfPresent(String.self, forKey: .kindRaw) ?? "lessons"
             invoiceDate = try c.decodeIfPresent(Date.self, forKey: .invoiceDate)
             isBlack = try c.decodeIfPresent(Bool.self, forKey: .isBlack) ?? false
         }
         internal func model() -> LessonPackage {
             LessonPackage(id: id, clientID: clientID, clientName: clientName, purchasedOn: purchasedOn,
                 priceCents: priceCents, capacity: capacity, expiresOn: expiresOn, notes: notes,
-                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash, invoiceDate: invoiceDate,
+                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash,
+                kind: PackageKind(rawValue: kindRaw) ?? .lessons, invoiceDate: invoiceDate,
                 isBlack: isBlack)
         }
     }
@@ -655,6 +694,50 @@ public struct BusinessArchive: Codable, Equatable {
             Expense(id: id, name: name, date: date, amountCents: amountCents,
                     kind: ExpenseKind(rawValue: kindRaw) ?? .oneTime, sourceKey: sourceKey,
                     createdAt: createdAt, updatedAt: updatedAt)
+        }
+    }
+    public struct CourseRecord: Codable, Equatable {
+        public var id: UUID
+        public var title: String
+        public var weekdaysMask: Int
+        public var startHour: Int
+        public var startMinute: Int
+        public var durationMinutes: Int
+        public var createdAt: Date
+        public var updatedAt: Date
+        public init(_ value: Course) {
+            id = value.id; title = value.title; weekdaysMask = value.weekdaysMask
+            startHour = value.startHour; startMinute = value.startMinute
+            durationMinutes = value.durationMinutes
+            createdAt = value.createdAt; updatedAt = value.updatedAt
+        }
+        internal func model() -> Course {
+            Course(id: id, title: title, weekdaysMask: weekdaysMask, startHour: startHour,
+                   startMinute: startMinute, durationMinutes: durationMinutes,
+                   createdAt: createdAt, updatedAt: updatedAt)
+        }
+    }
+    public struct CourseParticipantRecord: Codable, Equatable {
+        public var id: UUID
+        public var courseID: UUID
+        public var clientID: UUID
+        public var clientName: String
+        public var packageID: UUID?
+        public init(_ value: CourseParticipant) {
+            id = value.id; courseID = value.courseID; clientID = value.clientID
+            clientName = value.clientName; packageID = value.packageID
+        }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            courseID = try c.decode(UUID.self, forKey: .courseID)
+            clientID = try c.decode(UUID.self, forKey: .clientID)
+            clientName = try c.decode(String.self, forKey: .clientName)
+            packageID = try c.decodeIfPresent(UUID.self, forKey: .packageID)
+        }
+        internal func model() -> CourseParticipant {
+            CourseParticipant(id: id, courseID: courseID, clientID: clientID,
+                              clientName: clientName, packageID: packageID)
         }
     }
 }

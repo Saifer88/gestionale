@@ -11,9 +11,38 @@ public enum PaolaSchemaV12: VersionedSchema {
     public static var models: [any PersistentModel.Type] {
         [
             Client.self, TrainingService.self, ServiceRate.self, TrainingSession.self,
-            SessionParticipant.self, LessonPackage.self, PackageUse.self, LedgerEntry.self,
+            SessionParticipant.self, PaolaSchemaV12.LessonPackage.self, PackageUse.self, LedgerEntry.self,
             Unavailability.self, ClientAppointmentPreference.self, Invoice.self, Expense.self
         ]
+    }
+
+    /// Versione storica del pacchetto: ha `isBlack` (V10) ma NON `kindRaw` (aggiunto in
+    /// V13). Serve a mantenere lo schema V12 distinto da V13 per la migrazione.
+    @Model
+    public final class LessonPackage {
+        public var id: UUID = UUID()
+        public var clientID: UUID = UUID()
+        public var clientName: String = ""
+        public var purchasedOn: Date = Date()
+        public var priceCents: Int64 = 0
+        public var capacity: Int = 10
+        public var expiresOn: Date?
+        public var notes: String = ""
+        public var paymentMethodRaw: String = "cash"
+        public var invoiceDate: Date?
+        public var isBlack: Bool = false
+
+        public init(id: UUID = UUID(), clientID: UUID = UUID(), clientName: String = "",
+                    purchasedOn: Date = Date(), priceCents: Int64 = 0, capacity: Int = 10,
+                    expiresOn: Date? = nil, notes: String = "", paymentMethod: PaymentMethod = .cash,
+                    invoiceDate: Date? = nil, isBlack: Bool = false) {
+            self.id = id; self.clientID = clientID; self.clientName = clientName
+            self.purchasedOn = purchasedOn; self.priceCents = priceCents; self.capacity = capacity
+            self.expiresOn = expiresOn; self.notes = notes
+            self.paymentMethodRaw = paymentMethod.rawValue
+            self.invoiceDate = invoiceDate
+            self.isBlack = isBlack
+        }
     }
 
     @Model

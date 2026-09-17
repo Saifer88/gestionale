@@ -57,6 +57,19 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     }
 }
 
+/// Tipo di pacchetto: a lezioni (numero finito di sedute) o a tempo (valido fino a una
+/// data di scadenza, sedute illimitate entro la validità).
+public enum PackageKind: String, CaseIterable, Identifiable, Codable, Sendable {
+    case lessons, timed
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .lessons: return "A lezioni"
+        case .timed: return "A tempo"
+        }
+    }
+}
+
 @Model public final class TrainingService {
     public var id: UUID = UUID()
     public var name: String = ""
@@ -145,6 +158,9 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     public var expiresOn: Date?
     public var notes: String = ""
     public var paymentMethodRaw: String = "cash"
+    /// Tipo di pacchetto (schema V13): a lezioni o a tempo. Default "lessons" per i
+    /// pacchetti esistenti alla migrazione.
+    public var kindRaw: String = "lessons"
     /// Data scelta per la fatturazione del pacchetto (schema V8). Opzionale, default nil.
     public var invoiceDate: Date?
     /// Ripartizione contabile "bianco/nero" (schema V10): false = bianco, true = nero.
@@ -155,15 +171,20 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
         get { PaymentMethod(rawValue: paymentMethodRaw) ?? .cash }
         set { paymentMethodRaw = newValue.rawValue }
     }
+    public var kind: PackageKind {
+        get { PackageKind(rawValue: kindRaw) ?? .lessons }
+        set { kindRaw = newValue.rawValue }
+    }
 
     public init(id: UUID = UUID(), clientID: UUID = UUID(), clientName: String = "",
                 purchasedOn: Date = Date(), priceCents: Int64 = 0, capacity: Int = 10,
                 expiresOn: Date? = nil, notes: String = "", paymentMethod: PaymentMethod = .cash,
-                invoiceDate: Date? = nil, isBlack: Bool = false) {
+                kind: PackageKind = .lessons, invoiceDate: Date? = nil, isBlack: Bool = false) {
         self.id = id; self.clientID = clientID; self.clientName = clientName
         self.purchasedOn = purchasedOn; self.priceCents = priceCents; self.capacity = capacity
         self.expiresOn = expiresOn; self.notes = notes
         self.paymentMethodRaw = paymentMethod.rawValue
+        self.kindRaw = kind.rawValue
         self.invoiceDate = invoiceDate
         self.isBlack = isBlack
     }
@@ -225,6 +246,81 @@ public enum PaymentMethod: String, CaseIterable, Identifiable, Codable, Sendable
     public init(id: UUID = UUID(), startDate: Date = Date(), endDate: Date = Date(),
                 title: String = "") {
         self.id = id; self.startDate = startDate; self.endDate = endDate; self.title = title
+    }
+}
+
+/// Corso ricorrente settimanale (schema V14). Occupa il calendario nei giorni scelti,
+/// alla stessa ora, per tutte le settimane da oggi a +6 mesi (occorrenze virtuali, non
+/// materializzate). I giorni sono codificati come bitmask sui numeri weekday di
+/// `Calendar` (1 = domenica … 7 = sabato).
+@Model public final class Course {
+    public var id: UUID = UUID()
+    public var title: String = ""
+    /// Bitmask dei giorni: bit (weekday-1). Es. lunedì(2) → bit 1 → valore 2.
+    public var weekdaysMask: Int = 0
+    public var startHour: Int = 9
+    public var startMinute: Int = 0
+    public var durationMinutes: Int = 60
+    public var createdAt: Date = Date()
+    public var updatedAt: Date = Date()
+
+    public init(id: UUID = UUID(), title: String = "", weekdaysMask: Int = 0,
+                startHour: Int = 9, startMinute: Int = 0, durationMinutes: Int = 60,
+                createdAt: Date = Date(), updatedAt: Date = Date()) {
+        self.id = id; self.title = title; self.weekdaysMask = weekdaysMask
+        self.startHour = startHour; self.startMinute = startMinute
+        self.durationMinutes = durationMinutes
+        self.createdAt = createdAt; self.updatedAt = updatedAt
+    }
+
+    /// Insieme dei weekday (1...7) attivi, derivato dalla bitmask.
+    public var weekdays: Set<Int> {
+        get { Set((1...7).filter { weekdaysMask & (1 << ($0 - 1)) != 0 }) }
+        set { weekdaysMask = newValue.reduce(0) { $0 | (1 << ($1 - 1)) } }
+    }
+}
+
+@Model public final class CourseParticipant {
+    public var id: UUID = UUID()
+    public var courseID: UUID = UUID()
+    public var clientID: UUID = UUID()
+    public var clientName: String = ""
+    /// Pacchetto (a tempo) del cliente che copre la partecipazione. La visibilità in
+    /// agenda dura fino alla scadenza di questo pacchetto.
+    public var packageID: UUID?
+
+    public init(id: UUID = UUID(), courseID: UUID = UUID(), clientID: UUID = UUID(),
+                clientName: String = "", packageID: UUID? = nil) {
+        self.id = id; self.courseID = courseID; self.clientID = clientID
+        self.clientName = clientName; self.packageID = packageID
+    }
+}
+
+public struct CourseParticipantDraft: Identifiable {
+    public var id = UUID()
+    public var clientID: UUID?
+    public var packageID: UUID?
+    public init(id: UUID = UUID(), clientID: UUID? = nil, packageID: UUID? = nil) {
+        self.id = id; self.clientID = clientID; self.packageID = packageID
+    }
+}
+
+public struct CourseDraft {
+    public var id: UUID?
+    public var title = ""
+    public var weekdays: Set<Int> = []
+    public var startHour = 9
+    public var startMinute = 0
+    public var durationMinutes = 60
+    public var participants: [CourseParticipantDraft] = []
+    public init() {}
+    public init(_ model: Course, participants: [CourseParticipant] = []) {
+        id = model.id; title = model.title; weekdays = model.weekdays
+        startHour = model.startHour; startMinute = model.startMinute
+        durationMinutes = model.durationMinutes
+        self.participants = participants.filter { $0.courseID == model.id }.map {
+            CourseParticipantDraft(clientID: $0.clientID, packageID: $0.packageID)
+        }
     }
 }
 
@@ -297,6 +393,10 @@ public struct PackageDraft {
     public var expiresOn: Date?
     public var notes = ""
     public var paymentMethod: PaymentMethod = .cash
+    public var kind: PackageKind = .lessons
+    /// Durata in mesi per i pacchetti a tempo (1/3/6). Se impostata, la scadenza è
+    /// calcolata automaticamente da `purchasedOn`.
+    public var durationMonths: Int?
     /// Ripartizione contabile "bianco/nero". `nil` = deriva dal metodo di pagamento
     /// alla creazione (contanti/PayPal = nero) o conserva il valore attuale in modifica.
     public var isBlack: Bool?
@@ -306,6 +406,7 @@ public struct PackageDraft {
         priceCents = model.priceCents; capacity = model.capacity
         expiresOn = model.expiresOn; notes = model.notes
         paymentMethod = model.paymentMethod
+        kind = model.kind
         isBlack = model.isBlack
     }
 }

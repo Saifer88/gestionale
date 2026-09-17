@@ -437,13 +437,29 @@ public final class BusinessRepository {
     public func savePackage(_ draft: PackageDraft) throws -> UUID {
         try transact { writer in
             try BusinessRules.date(draft.purchasedOn); try BusinessRules.amount(draft.priceCents)
-            try BusinessRules.packageCapacity(draft.capacity)
-            if let expiry = draft.expiresOn {
+            // Scadenza: per un pacchetto a tempo è calcolata dalla durata in mesi (1/3/6)
+            // a partire dall'acquisto; per uno a lezioni resta quella eventualmente scelta.
+            var effectiveExpiry = draft.expiresOn
+            if draft.kind == .timed {
+                let months = draft.durationMonths ?? 1
+                effectiveExpiry = Calendar.current.date(byAdding: .month, value: months,
+                                                        to: Calendar.current.startOfDay(for: draft.purchasedOn))
+                guard effectiveExpiry != nil else {
+                    throw BusinessError.invalidInput("Durata del pacchetto a tempo non valida.")
+                }
+            } else {
+                // I pacchetti a lezioni validano la capienza.
+                try BusinessRules.packageCapacity(draft.capacity)
+            }
+            if let expiry = effectiveExpiry {
                 try BusinessRules.date(expiry)
                 guard Calendar.current.startOfDay(for: expiry) >= Calendar.current.startOfDay(for: draft.purchasedOn) else {
                     throw BusinessError.invalidInput("La scadenza non può precedere l'acquisto.")
                 }
             }
+            // Capienza memorizzata: per i pacchetti a tempo non è significativa; usiamo 1
+            // solo per rispettare i vincoli storici, ma non viene applicata (illimitato).
+            let effectiveCapacity = draft.kind == .timed ? max(1, draft.capacity) : draft.capacity
             let notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if let id = draft.id {
@@ -451,13 +467,16 @@ public final class BusinessRepository {
                 // economici restano associati allo stesso cliente).
                 let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
                 let uses = try writer.fetch(FetchDescriptor<PackageUse>())
-                let used = BusinessReports.used(package: package, uses: uses)
-                guard draft.capacity >= used else { throw BusinessError.packageCapacityBelowUsage }
+                if draft.kind == .lessons {
+                    let used = BusinessReports.used(package: package, uses: uses)
+                    guard effectiveCapacity >= used else { throw BusinessError.packageCapacityBelowUsage }
+                }
 
                 package.purchasedOn = draft.purchasedOn
                 package.priceCents = draft.priceCents
-                package.capacity = draft.capacity
-                package.expiresOn = draft.expiresOn
+                package.capacity = effectiveCapacity
+                package.expiresOn = effectiveExpiry
+                package.kind = draft.kind
                 package.notes = notes
                 package.paymentMethod = draft.paymentMethod
                 if let isBlack = draft.isBlack { package.isBlack = isBlack }
@@ -504,18 +523,21 @@ public final class BusinessRepository {
             let client = try client(draft.clientID, in: writer, requireActive: true)
             // Bianco/nero: se non indicato nella bozza, deriva dal metodo di pagamento.
             let packageIsBlack = draft.isBlack ?? draft.paymentMethod.defaultsToBlack
+            let packageNote = draft.kind == .timed
+                ? "Pacchetto \(draft.durationMonths ?? 1) mes\((draft.durationMonths ?? 1) == 1 ? "e" : "i")"
+                : "Pacchetto \(effectiveCapacity) lezioni"
             let package = LessonPackage(clientID: client.id, clientName: client.fullName,
-                purchasedOn: draft.purchasedOn, priceCents: draft.priceCents, capacity: draft.capacity,
-                expiresOn: draft.expiresOn, notes: notes, paymentMethod: draft.paymentMethod,
-                isBlack: packageIsBlack)
+                purchasedOn: draft.purchasedOn, priceCents: draft.priceCents, capacity: effectiveCapacity,
+                expiresOn: effectiveExpiry, notes: notes, paymentMethod: draft.paymentMethod,
+                kind: draft.kind, isBlack: packageIsBlack)
             writer.insert(package)
             writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
-                kind: .charge, amountCents: draft.priceCents, notes: "Pacchetto \(draft.capacity) lezioni",
+                kind: .charge, amountCents: draft.priceCents, notes: packageNote,
                 sourceKey: BusinessRules.packageSource(package.id)))
             if draft.priceCents > 0 {
                 writer.insert(LedgerEntry(clientID: client.id, clientName: client.fullName, date: draft.purchasedOn,
                     kind: .payment, amountCents: draft.priceCents, method: draft.paymentMethod,
-                    notes: "Pacchetto \(draft.capacity) lezioni",
+                    notes: packageNote,
                     sourceKey: BusinessRules.packageIncomeSource(package.id)))
                 // Spesa automatica (commissione) per incassi Stripe/carta.
                 let feeName = "Spesa \(BusinessRules.feeLabel(draft.paymentMethod)) pacchetto \(client.fullName)"
@@ -675,6 +697,78 @@ public final class BusinessRepository {
         }
     }
 
+    // MARK: - Corsi
+
+    /// Crea o aggiorna un corso ricorrente e i suoi partecipanti. I partecipanti devono
+    /// essere clienti attivi con un pacchetto a tempo che appartiene a loro. Non genera
+    /// movimenti economici: la partecipazione è coperta dal pacchetto a tempo.
+    @discardableResult
+    public func saveCourse(_ draft: CourseDraft) throws -> UUID {
+        try transact { writer in
+            let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { throw BusinessError.invalidInput("Inserire il titolo del corso.") }
+            guard !draft.weekdays.isEmpty else { throw BusinessError.invalidInput("Seleziona almeno un giorno della settimana.") }
+            guard draft.weekdays.allSatisfy({ (1...7).contains($0) }) else {
+                throw BusinessError.invalidInput("Giorni della settimana non validi.")
+            }
+            guard (0...23).contains(draft.startHour), (0...59).contains(draft.startMinute) else {
+                throw BusinessError.invalidInput("Orario del corso non valido.")
+            }
+            try BusinessRules.duration(draft.durationMinutes)
+
+            let course: Course
+            if let id = draft.id {
+                course = try find(id, in: writer, type: Course.self, name: "Corso")
+            } else {
+                course = Course()
+                writer.insert(course)
+            }
+            course.title = title
+            course.weekdays = draft.weekdays
+            course.startHour = draft.startHour
+            course.startMinute = draft.startMinute
+            course.durationMinutes = draft.durationMinutes
+            course.updatedAt = Date()
+
+            // Sostituisce l'elenco partecipanti. Ogni partecipante è un cliente con un
+            // pacchetto a tempo che gli appartiene.
+            for previous in try writer.fetch(FetchDescriptor<CourseParticipant>()) where previous.courseID == course.id {
+                writer.delete(previous)
+            }
+            var seen = Set<UUID>()
+            for person in draft.participants {
+                guard let clientID = person.clientID else { continue }
+                guard seen.insert(clientID).inserted else {
+                    throw BusinessError.invalidInput("Partecipante duplicato nel corso.")
+                }
+                let client = try client(clientID, in: writer, requireActive: true)
+                if let packageID = person.packageID {
+                    let package = try find(packageID, in: writer, type: LessonPackage.self, name: "Pacchetto")
+                    guard package.clientID == clientID else {
+                        throw BusinessError.invalidInput("Il pacchetto non appartiene al partecipante.")
+                    }
+                    guard package.kind == .timed else {
+                        throw BusinessError.invalidInput("I partecipanti al corso devono avere un pacchetto a tempo.")
+                    }
+                }
+                writer.insert(CourseParticipant(courseID: course.id, clientID: clientID,
+                    clientName: client.fullName, packageID: person.packageID))
+            }
+            return course.id
+        }
+    }
+
+    /// Elimina un corso e i suoi partecipanti. Non tocca movimenti economici.
+    public func deleteCourse(_ id: UUID) throws {
+        try transact { writer in
+            let course = try find(id, in: writer, type: Course.self, name: "Corso")
+            for participant in try writer.fetch(FetchDescriptor<CourseParticipant>()) where participant.courseID == id {
+                writer.delete(participant)
+            }
+            writer.delete(course)
+        }
+    }
+
     private func recordAdjustment(originalID: UUID, kind: LedgerKind, amountCents: Int64,
                                   date: Date, notes: String) throws -> UUID {
         try transact { writer in
@@ -703,6 +797,8 @@ public final class BusinessRepository {
             throw BusinessError.invalidInput("Il pacchetto non appartiene al cliente selezionato.")
         }
         try BusinessArchive().checkExpiry(package.expiresOn, sessionDate: date)
+        // I pacchetti a tempo sono illimitati entro la validità: solo la scadenza conta.
+        guard package.kind != .timed else { return }
         let uses = try writer.fetch(FetchDescriptor<PackageUse>())
         guard BusinessReports.remaining(package: package, uses: uses) > 0 else { throw BusinessError.packageExhausted }
     }
@@ -739,6 +835,8 @@ public final class BusinessRepository {
             case let value as Unavailability: return value.id == id
             case let value as Invoice: return value.id == id
             case let value as Expense: return value.id == id
+            case let value as Course: return value.id == id
+            case let value as CourseParticipant: return value.id == id
             default: return false
             }
         }

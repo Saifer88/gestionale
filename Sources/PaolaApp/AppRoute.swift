@@ -11,6 +11,7 @@ enum AppRoute: Hashable {
     case client(UUID)
     case session(UUID)
     case package(UUID)
+    case course(UUID)
     case ledgerEntry(UUID)
     case clientPayments(UUID)
     case clientPackages(UUID)
@@ -47,6 +48,8 @@ struct AppRouteView: View {
             ResolvedModelView(id: id, idOf: { $0.id }) { (session: TrainingSession) in SessionDetailView(session: session) }
         case .package(let id):
             ResolvedModelView(id: id, idOf: { $0.id }) { (package: LessonPackage) in PackageDetailView(package: package) }
+        case .course(let id):
+            ResolvedModelView(id: id, idOf: { $0.id }) { (course: Course) in CourseDetailView(course: course) }
         case .ledgerEntry(let id):
             ResolvedModelView(id: id, idOf: { $0.id }) { (entry: LedgerEntry) in LedgerEntryDetailView(entry: entry) }
         case .clientPayments(let id):

@@ -10,13 +10,15 @@ struct AgendaHourRow: Identifiable {
     let hour: Int
     /// Appuntamenti che iniziano in questa fascia oraria, ordinati per orario.
     let sessions: [TrainingSession]
+    /// Occorrenze di corso che iniziano in questa fascia oraria.
+    let courses: [CourseOccurrence]
     /// Vero se un altro appuntamento o un'indisponibilità copre l'ora (per il drop).
     let occupantID: UUID?
     let isFree: Bool
 
     var id: Int { hour }
     var hourLabel: String { SchedulingSuggestions.hourLabel(start) }
-    var isEmpty: Bool { sessions.isEmpty }
+    var isEmpty: Bool { sessions.isEmpty && courses.isEmpty }
 }
 
 /// Calcolo degli slot disponibili durante il drag & drop e regole di riprogrammazione.
@@ -38,6 +40,7 @@ enum AgendaScheduling {
                          draggedDurationMinutes: Int,
                          sessions: [TrainingSession],
                          blocks: [Unavailability],
+                         courseOccurrences: [CourseOccurrence] = [],
                          calendar: Calendar = SchedulingSuggestions.calendar) -> [AgendaHourRow] {
         let startOfDay = calendar.startOfDay(for: day)
         return gridHours.compactMap { hour in
@@ -52,6 +55,10 @@ enum AgendaScheduling {
             }.sorted {
                 $0.startDate == $1.startDate ? $0.id.uuidString < $1.id.uuidString : $0.startDate < $1.startDate
             }
+            let hourCourses = courseOccurrences.filter {
+                calendar.isDate($0.start, inSameDayAs: day)
+                    && calendar.component(.hour, from: $0.start) == hour
+            }.sorted { $0.start < $1.start }
             let duration = draggedDurationMinutes
             let end = start.addingTimeInterval(Double(duration) * 60)
             let occupant = draggedSessionID == nil ? nil : sessions.first {
@@ -59,12 +66,15 @@ enum AgendaScheduling {
                     && calendar.isDate($0.startDate, inSameDayAs: day)
                     && calendar.component(.hour, from: $0.startDate) == hour
             }
+            // La fascia è libera se non c'è un altro appuntamento, né un'indisponibilità,
+            // né un'occorrenza di corso che la copre (i corsi bloccano come le indisponibilità).
             let free = !sessions.contains {
                 $0.id != draggedSessionID && $0.status != .cancelled && $0.status != .noShow
                     && $0.startDate < end && $0.endDate > start
             } && !blocks.contains { $0.startDate < end && $0.endDate > start }
+              && !courseOccurrences.contains { $0.start < end && $0.end > start }
             return AgendaHourRow(start: start, hour: hour, sessions: hourSessions,
-                                 occupantID: occupant?.id, isFree: free)
+                                 courses: hourCourses, occupantID: occupant?.id, isFree: free)
         }
     }
 }

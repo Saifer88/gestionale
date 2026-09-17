@@ -55,7 +55,8 @@ public enum PaolaSchemaMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] {
         [PaolaSchemaV1.self, PaolaSchemaV2.self, PaolaSchemaV3.self, PaolaSchemaV4.self,
          PaolaSchemaV5.self, PaolaSchemaV6.self, PaolaSchemaV7.self, PaolaSchemaV8.self,
-         PaolaSchemaV9.self, PaolaSchemaV10.self, PaolaSchemaV11.self, PaolaSchemaV12.self]
+         PaolaSchemaV9.self, PaolaSchemaV10.self, PaolaSchemaV11.self, PaolaSchemaV12.self,
+         PaolaSchemaV13.self, PaolaSchemaV14.self]
     }
     public static var stages: [MigrationStage] {
         [
@@ -69,7 +70,9 @@ public enum PaolaSchemaMigrationPlan: SchemaMigrationPlan {
             .lightweight(fromVersion: PaolaSchemaV8.self, toVersion: PaolaSchemaV9.self),
             .lightweight(fromVersion: PaolaSchemaV9.self, toVersion: PaolaSchemaV10.self),
             .lightweight(fromVersion: PaolaSchemaV10.self, toVersion: PaolaSchemaV11.self),
-            .lightweight(fromVersion: PaolaSchemaV11.self, toVersion: PaolaSchemaV12.self)
+            .lightweight(fromVersion: PaolaSchemaV11.self, toVersion: PaolaSchemaV12.self),
+            .lightweight(fromVersion: PaolaSchemaV12.self, toVersion: PaolaSchemaV13.self),
+            .lightweight(fromVersion: PaolaSchemaV13.self, toVersion: PaolaSchemaV14.self)
         ]
     }
 }

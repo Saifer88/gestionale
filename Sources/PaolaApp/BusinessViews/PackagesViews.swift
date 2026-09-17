@@ -9,7 +9,7 @@ struct PackagesView: View {
     private let clientID: UUID?
     @State private var selectedClientID: UUID?
     @State private var onlyAvailable = false
-    @State private var creating = false
+    @State private var creatingKind: PackageKind?
 
     init(clientID: UUID? = nil) {
         self.clientID = clientID
@@ -55,11 +55,18 @@ struct PackagesView: View {
         .accessibilityIdentifier("packages.screen")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { creating = true } label: { Label("Assegna pacchetto", systemImage: "plus") }
-                    .accessibilityIdentifier("packages.new")
+                Menu {
+                    Button("Pacchetto a lezioni") { creatingKind = .lessons }
+                    Button("Pacchetto a tempo") { creatingKind = .timed }
+                } label: {
+                    Label("Assegna pacchetto", systemImage: "plus")
+                }
+                .accessibilityIdentifier("packages.new")
             }
         }
-        .sheet(isPresented: $creating) { PackageEditor(clientID: selectedClientID) }
+        .sheet(item: $creatingKind) { kind in
+            PackageEditor(clientID: selectedClientID, kind: kind)
+        }
     }
 }
 
@@ -96,6 +103,8 @@ struct PackageEditor: View {
     @Query private var uses: [PackageUse]
     private let package: LessonPackage?
     @State private var selectedClientID: UUID?
+    @State private var kind: PackageKind = .lessons
+    @State private var durationMonths = 1
     @State private var purchasedOn = Date()
     @State private var price = ""
     @State private var capacity = 10
@@ -116,14 +125,16 @@ struct PackageEditor: View {
         return BusinessReports.used(package: package, uses: uses)
     }
 
-    init(clientID: UUID? = nil) {
+    init(clientID: UUID? = nil, kind: PackageKind = .lessons) {
         self.package = nil
+        _kind = State(initialValue: kind)
         _isBlack = State(initialValue: PaymentMethod.cash.defaultsToBlack)
         _selectedClientID = State(initialValue: clientID)
     }
 
     init(package: LessonPackage) {
         self.package = package
+        _kind = State(initialValue: package.kind)
         _selectedClientID = State(initialValue: package.clientID)
         _purchasedOn = State(initialValue: package.purchasedOn)
         _price = State(initialValue: BusinessFormatting.editableMoney(package.priceCents))
@@ -155,20 +166,37 @@ struct PackageEditor: View {
                                         .font(.caption).foregroundStyle(.orange)
                                 }
                             }
-                            Stepper("Lezioni incluse: \(capacity)", value: $capacity, in: max(1, usedLessons)...1000)
-                                .accessibilityIdentifier("package.capacity")
-                            if isEditing && usedLessons > 0 {
-                                Text("Sono già state utilizzate \(usedLessons) lezioni: il minimo non può scendere sotto questo valore.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            HStack {
-                                Text("Selezione rapida")
-                                Spacer()
-                                ForEach([5, 10], id: \.self) { count in
-                                    Button("\(count)") { capacity = count }
-                                        .buttonStyle(.bordered)
-                                        .accessibilityIdentifier("package.capacity.\(count)")
+                            LabeledContent("Tipo", value: kind.title)
+                            if kind == .lessons {
+                                Stepper("Lezioni incluse: \(capacity)", value: $capacity, in: max(1, usedLessons)...1000)
+                                    .accessibilityIdentifier("package.capacity")
+                                if isEditing && usedLessons > 0 {
+                                    Text("Sono già state utilizzate \(usedLessons) lezioni: il minimo non può scendere sotto questo valore.")
+                                        .font(.caption).foregroundStyle(.secondary)
                                 }
+                                HStack {
+                                    Text("Selezione rapida")
+                                    Spacer()
+                                    ForEach([5, 10], id: \.self) { count in
+                                        Button("\(count)") { capacity = count }
+                                            .buttonStyle(.bordered)
+                                            .accessibilityIdentifier("package.capacity.\(count)")
+                                    }
+                                }
+                            } else {
+                                Picker("Durata", selection: $durationMonths) {
+                                    Text("1 mese").tag(1)
+                                    Text("3 mesi").tag(3)
+                                    Text("6 mesi").tag(6)
+                                }
+                                .pickerStyle(.segmented)
+                                .accessibilityIdentifier("package.duration")
+                                LabeledContent("Scadenza",
+                                    value: (Calendar.current.date(byAdding: .month, value: durationMonths,
+                                            to: Calendar.current.startOfDay(for: purchasedOn)) ?? purchasedOn)
+                                            .formatted(.dateTime.day().month(.wide).year()))
+                                Text("Il pacchetto a tempo è valido fino alla scadenza, con sedute illimitate.")
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                             MoneyField(title: "Prezzo totale del pacchetto (€)", text: $price)
                                 .accessibilityIdentifier("package.price")
@@ -192,13 +220,16 @@ struct PackageEditor: View {
                             }
                             .pickerStyle(.segmented)
                             .accessibilityIdentifier("package.accounting")
-                            DatePicker("Data di acquisto", selection: $purchasedOn, displayedComponents: .date)
+                            DatePicker(kind == .timed ? "Data di avvio" : "Data di acquisto",
+                                       selection: $purchasedOn, displayedComponents: .date)
                                 .accessibilityIdentifier("package.purchasedOn")
-                            Toggle("Prevede una scadenza", isOn: $hasExpiry)
-                                .accessibilityIdentifier("package.hasExpiry")
-                            if hasExpiry {
-                                DatePicker("Ultimo giorno utilizzabile", selection: $expiry, displayedComponents: .date)
-                                    .accessibilityIdentifier("package.expiry")
+                            if kind == .lessons {
+                                Toggle("Prevede una scadenza", isOn: $hasExpiry)
+                                    .accessibilityIdentifier("package.hasExpiry")
+                                if hasExpiry {
+                                    DatePicker("Ultimo giorno utilizzabile", selection: $expiry, displayedComponents: .date)
+                                        .accessibilityIdentifier("package.expiry")
+                                }
                             }
                             TextField("Note (facoltative)", text: $notes, axis: .vertical).lineLimit(3...6)
                         }
@@ -270,8 +301,10 @@ struct PackageEditor: View {
     private func validateForConfirmation() {
         do {
             guard selectedClientID != nil else { throw BusinessInputError(message: "Seleziona un cliente attivo.") }
-            guard (1...1000).contains(capacity) else {
-                throw BusinessInputError(message: "Il numero di lezioni deve essere compreso tra 1 e 1000.")
+            if kind == .lessons {
+                guard (1...1000).contains(capacity) else {
+                    throw BusinessInputError(message: "Il numero di lezioni deve essere compreso tra 1 e 1000.")
+                }
             }
             _ = try Money.parse(price)
             confirmingIncome = true
@@ -289,9 +322,15 @@ struct PackageEditor: View {
                 draft.clientID = selectedClientID
             }
             draft.priceCents = try Money.parse(price)
+            draft.kind = kind
             draft.capacity = capacity
             draft.purchasedOn = Calendar.current.startOfDay(for: purchasedOn)
-            draft.expiresOn = hasExpiry ? Calendar.current.startOfDay(for: expiry) : nil
+            if kind == .timed {
+                draft.durationMonths = durationMonths
+                draft.expiresOn = nil // calcolata dal dominio
+            } else {
+                draft.expiresOn = hasExpiry ? Calendar.current.startOfDay(for: expiry) : nil
+            }
             draft.notes = notes
             draft.paymentMethod = paymentMethod
             draft.isBlack = isBlack
