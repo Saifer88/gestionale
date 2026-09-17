@@ -37,6 +37,8 @@ private struct ApplicationRoot: View {
     #if os(macOS)
     @StateObject private var updater = AppUpdater()
     #endif
+    @State private var askBackupPassword = false
+    @State private var backupPasswordChecked = false
 
     var body: some View {
         Group {
@@ -94,6 +96,83 @@ private struct ApplicationRoot: View {
             if storage.container == nil && storage.errorMessage == nil {
                 storage.open()
             }
+        }
+        // Backup automatico giornaliero: quando l'archivio è pronto, al primo avvio del
+        // giorno esegue il backup se la password è impostata, altrimenti chiede di impostarla.
+        .task(id: storage.container == nil) {
+            handleDailyBackup()
+        }
+        .sheet(isPresented: $askBackupPassword) {
+            BackupPasswordPrompt(onSaved: {
+                askBackupPassword = false
+                runAutoBackup()
+            }, onSkip: {
+                askBackupPassword = false
+            })
+        }
+    }
+
+    /// Decide cosa fare al primo avvio del giorno riguardo al backup automatico.
+    private func handleDailyBackup() {
+        guard let container = storage.container, !backupPasswordChecked else { return }
+        guard !AutoBackupService.alreadyRanToday() else { backupPasswordChecked = true; return }
+        backupPasswordChecked = true
+        if AutoBackupService.isConfigured() {
+            AutoBackupService.runIfNeeded(context: container.mainContext)
+        } else {
+            // Password non impostata: chiedila una volta.
+            askBackupPassword = true
+        }
+    }
+
+    private func runAutoBackup() {
+        guard let container = storage.container else { return }
+        AutoBackupService.runIfNeeded(context: container.mainContext)
+    }
+}
+
+/// Dialog che chiede la password del backup automatico e la salva in Keychain.
+private struct BackupPasswordPrompt: View {
+    let onSaved: () -> Void
+    let onSkip: () -> Void
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("Password del backup (almeno 12 caratteri)", text: $password)
+                    SecureField("Ripeti la password", text: $confirmation)
+                } footer: {
+                    Text("Usata per cifrare i backup automatici giornalieri, salvati nella cartella dell'app. La password è conservata nel Keychain del dispositivo. Puoi cambiarla nelle impostazioni di backup.")
+                }
+                if let error {
+                    Text(error).foregroundStyle(.orange).font(.caption)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Backup automatico")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Più tardi") { onSkip() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Attiva") { save() }
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 320)
+    }
+
+    private func save() {
+        guard password == confirmation else { error = "Le password non coincidono."; return }
+        do {
+            try BackupPasswordStore(secrets: KeychainSecretStore()).save(password)
+            onSaved()
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 }

@@ -20,16 +20,9 @@ struct CalendarSessionRow: View {
                 .font(.subheadline.weight(.semibold)).monospacedDigit()
             ForEach(people) { person in
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
-                        if person.packageID != nil {
-                            Image(systemName: "rectangle.stack.fill")
-                                .font(.caption).foregroundStyle(.blue)
-                                .accessibilityLabel("Pacchetto in uso")
-                        }
-                        Text(clients.first(where: { $0.id == person.clientID })?.fullName ?? person.clientName)
-                            .font(.headline)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text(clients.first(where: { $0.id == person.clientID })?.fullName ?? person.clientName)
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
                     if person.packageID != nil {
                         Text("Pacchetto in uso").font(.caption).foregroundStyle(.secondary)
                     } else {

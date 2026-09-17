@@ -353,18 +353,29 @@ struct AgendaView: View {
                 }
                 if participants.filter({$0.sessionID == session.id}).count != 1  || participants.filter({$0.sessionID == session.id})[0].packageID == nil{
                     paidToggle(for: session) }
+                Spacer(minLength: 0)
+                // Icona pacchetto ancorata in basso a destra del badge (stessa posizione
+                // dell'icona corso), quando almeno un partecipante usa un pacchetto.
+                if usesAnyPackage(session) {
+                    Image(systemName: "rectangle.stack.fill")
+                        .font(.callout).foregroundStyle(.blue)
+                        .help("Lezione con pacchetto in uso")
+                        .accessibilityLabel("Pacchetto in uso")
+                }
             }
         }
+    }
+
+    /// True se almeno un partecipante della sessione usa un pacchetto.
+    private func usesAnyPackage(_ session: TrainingSession) -> Bool {
+        participants.contains { $0.sessionID == session.id && $0.packageID != nil }
     }
 
     /// Card di un'occorrenza di corso in agenda: badge con icona dedicata, titolo,
     /// orario e partecipanti visibili (pacchetto a tempo ancora valido a quella data).
     @ViewBuilder private func courseCard(_ occurrence: CourseOccurrence) -> some View {
         NavigationLink(value: AppRoute.course(occurrence.course.id)) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "figure.strengthtraining.traditional")
-                    .foregroundStyle(.purple)
-                    .accessibilityLabel("Corso")
+            HStack(alignment: .bottom, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(occurrence.course.title.isEmpty ? "Corso" : occurrence.course.title)
                         .font(.subheadline.weight(.semibold))
@@ -375,7 +386,11 @@ struct AgendaView: View {
                             .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                     }
                 }
-                Spacer()
+                Spacer(minLength: 0)
+                // Icona corso ancorata in basso a destra, stessa posizione dell'icona pacchetto.
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .font(.callout).foregroundStyle(.purple)
+                    .accessibilityLabel("Corso")
             }
             .padding(10)
             .background(Color.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))

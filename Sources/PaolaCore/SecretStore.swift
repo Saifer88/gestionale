@@ -11,6 +11,33 @@ public protocol SecretStore: AnyObject {
 public enum SecretKey {
     public static let arubaUsername = "aruba.username"
     public static let arubaPassword = "aruba.password"
+    /// Password del backup automatico giornaliero (Keychain). Scelta dall'utente,
+    /// usata per cifrare i backup automatici senza doverla ridigitare.
+    public static let autoBackupPassword = "backup.autoPassword"
+}
+
+/// Legge/scrive la password del backup automatico tramite un `SecretStore` (Keychain).
+public final class BackupPasswordStore {
+    private let secrets: SecretStore
+    public init(secrets: SecretStore) { self.secrets = secrets }
+
+    /// Password memorizzata (nil se non impostata).
+    public func password() -> String? {
+        let value = secrets.string(for: SecretKey.autoBackupPassword)
+        return (value?.isEmpty == false) ? value : nil
+    }
+    public var isConfigured: Bool { password() != nil }
+
+    /// Salva la password (minimo 12 caratteri, come per i backup manuali).
+    public func save(_ password: String) throws {
+        guard password.count >= 12 else {
+            throw BusinessError.invalidInput("La password del backup deve avere almeno 12 caratteri.")
+        }
+        try secrets.set(password, for: SecretKey.autoBackupPassword)
+    }
+    public func clear() throws {
+        try secrets.set(nil, for: SecretKey.autoBackupPassword)
+    }
 }
 
 /// Credenziali del servizio di fatturazione elettronica Aruba.
