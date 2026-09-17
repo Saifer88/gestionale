@@ -5,6 +5,10 @@ import SwiftUI
 struct ClientDetailView: View {
     @Environment(\.modelContext) private var context
     let client: Client
+    /// True quando la scheda è aperta da un appuntamento (SessionDetailView). In questo
+    /// caso i percorsi che riportano a una lezione sono disattivati per evitare un ciclo
+    /// di navigazione Cliente↔Lezione, che su macOS manda in freeze la NavigationStack.
+    var isNested = false
     @Query private var services: [TrainingService]
     @Query private var rates: [ServiceRate]
     @State private var showingEditor = false
@@ -122,7 +126,10 @@ struct ClientDetailView: View {
                 .accessibilityIdentifier("client.physicalAnalysis.detail")
             }
 
-            ClientBusinessSection(client: client)
+            // In modalità annidata (scheda aperta in uno sheet da un appuntamento) la
+            // sezione conto è a sola lettura: mostra saldo e non pagato senza i link a
+            // Pacchetti/Storico, che riaprirebbero la catena di navigazione verso le lezioni.
+            ClientBusinessSection(client: client, readOnly: isNested)
 
             Section {
                 Button {

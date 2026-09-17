@@ -4,6 +4,10 @@ import SwiftUI
 
 struct ClientBusinessSection: View {
     let client: Client
+    /// Sola lettura: nasconde i link verso Pacchetti/Storico appuntamenti (che
+    /// navigano alle lezioni). Usato quando la scheda è mostrata in uno sheet da un
+    /// appuntamento, per non riaprire la catena di navigazione verso le lezioni.
+    var readOnly = false
     @Query private var entries: [LedgerEntry]
     @Query private var packages: [LessonPackage]
     @Query private var uses: [PackageUse]
@@ -30,25 +34,27 @@ struct ClientBusinessSection: View {
             } else {
                 BalanceLabel(cents: BusinessReports.balance(clientID: client.id, entries: entries))
                 LabeledContent("Lezioni residue non scadute", value: "\(availableLessons)")
-                NavigationLink {
-                    PaymentsView(clientID: client.id)
-                } label: {
-                    Label("Saldo e cronologia movimenti", systemImage: "eurosign.circle")
-                }
-                NavigationLink {
-                    PackagesView(clientID: client.id)
-                } label: {
-                    Label("Pacchetti e utilizzi", systemImage: "square.stack.3d.up")
-                }
-                NavigationLink {
-                    ClientSessionsView(clientID: client.id)
-                } label: {
-                    Label("Storico appuntamenti", systemImage: "calendar")
-                }
-                NavigationLink {
-                    ReportsView(clientID: client.id)
-                } label: {
-                    Label("Estratto conto ed esportazione", systemImage: "doc.text")
+                if !readOnly {
+                    NavigationLink {
+                        PaymentsView(clientID: client.id)
+                    } label: {
+                        Label("Saldo e cronologia movimenti", systemImage: "eurosign.circle")
+                    }
+                    NavigationLink {
+                        PackagesView(clientID: client.id)
+                    } label: {
+                        Label("Pacchetti e utilizzi", systemImage: "square.stack.3d.up")
+                    }
+                    NavigationLink {
+                        ClientSessionsView(clientID: client.id)
+                    } label: {
+                        Label("Storico appuntamenti", systemImage: "calendar")
+                    }
+                    NavigationLink {
+                        ReportsView(clientID: client.id)
+                    } label: {
+                        Label("Estratto conto ed esportazione", systemImage: "doc.text")
+                    }
                 }
             }
         } header: {
@@ -61,16 +67,11 @@ struct ClientBusinessSection: View {
 
         if _sessions.fetchError == nil && _participants.fetchError == nil && !unpaidSessions.isEmpty {
             Section {
+                // Righe informative (non navigabili): il dettaglio dei singoli appuntamenti
+                // è raggiungibile da "Storico appuntamenti" qui sopra. Evitiamo un link a
+                // SessionDetailView, che chiuderebbe un ciclo di navigazione Cliente↔Lezione.
                 ForEach(unpaidSessions) { unpaid in
-                    if let session = sessions.first(where: { $0.id == unpaid.sessionID }) {
-                        NavigationLink {
-                            SessionDetailView(session: session)
-                        } label: {
-                            unpaidRow(unpaid)
-                        }
-                    } else {
-                        unpaidRow(unpaid)
-                    }
+                    unpaidRow(unpaid)
                 }
                 LabeledContent("Totale non pagato") {
                     Text(Money.format(unpaidTotalCents)).monospacedDigit().font(.headline)

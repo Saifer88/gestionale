@@ -568,6 +568,7 @@ struct SessionDetailView: View {
     @State private var editing = false
     @State private var pendingStatus: SessionStatus?
     @State private var confirmingDelete = false
+    @State private var viewingClient: Client?
     @State private var operation = BusinessOperation()
 
     private var people: [SessionParticipant] { participants.filter { $0.sessionID == session.id } }
@@ -593,6 +594,17 @@ struct SessionDetailView: View {
         }
         .navigationTitle(session.serviceName)
         .accessibilityIdentifier("session.detail")
+        .sheet(item: $viewingClient) { client in
+            NavigationStack {
+                ClientDetailView(client: client, isNested: true)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Chiudi") { viewingClient = nil }
+                        }
+                    }
+            }
+            .frame(minWidth: 480, minHeight: 560)
+        }
         .toolbar {
             if session.status != .completed {
                 ToolbarItem(placement: .primaryAction) {
@@ -633,11 +645,19 @@ struct SessionDetailView: View {
                 ForEach(people) { person in
                     VStack(alignment: .leading, spacing: 5) {
                         if let client = clients.first(where: { $0.id == person.clientID }) {
-                            NavigationLink {
-                                ClientDetailView(client: client)
+                            // La scheda cliente è presentata come sheet, non con un secondo
+                            // push nello stack: su macOS il doppio push (SessionDetailView →
+                            // ClientDetailView) dentro NavigationSplitView innesca un loop di
+                            // layout di AppKit che blocca l'app. Lo sheet ha un hosting view
+                            // separato e non partecipa a quella catena di layout.
+                            Button {
+                                viewingClient = client
                             } label: {
                                 Label(client.fullName + (client.isArchived ? " · archiviato" : ""), systemImage: "person")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                         } else {
                             Text(person.clientName).font(.headline)
                         }
