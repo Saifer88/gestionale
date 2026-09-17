@@ -44,9 +44,7 @@ struct PackagesView: View {
                                                description: Text("Assegna un pacchetto oppure modifica il filtro per consultare lo storico."))
                     }
                     ForEach(visiblePackages) { package in
-                        NavigationLink {
-                            PackageDetailView(package: package)
-                        } label: {
+                        NavigationLink(value: AppRoute.package(package.id)) {
                             PackageSummaryRow(package: package, uses: uses)
                         }
                     }
@@ -343,7 +341,7 @@ struct PackageDetailView: View {
                         PackageInvoiceSection(package: package, client: clients.first(where: { $0.id == package.clientID }))
                     }
                     Section {
-                        NavigationLink("Movimenti e saldo cliente") { PaymentsView(clientID: package.clientID) }
+                        NavigationLink("Movimenti e saldo cliente", value: AppRoute.clientPayments(package.clientID))
                     } footer: {
                         Text("I nuovi pacchetti registrano l'incasso all'acquisto. Per i pacchetti precedenti all'aggiornamento rimangono i movimenti storici, senza incassi retroattivi. Nessun rinnovo automatico.")
                     }
@@ -354,9 +352,7 @@ struct PackageDetailView: View {
                         }
                         ForEach(packageUses) { use in
                             if let session = sessions.first(where: { $0.id == use.sessionID }) {
-                                NavigationLink {
-                                    SessionDetailView(session: session)
-                                } label: {
+                                NavigationLink(value: AppRoute.session(session.id)) {
                                     VStack(alignment: .leading) {
                                         Text(BusinessFormatting.day(session.startDate)).font(.caption)
                                         SessionSummaryRow(session: session, participants: participants)

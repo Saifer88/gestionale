@@ -16,10 +16,10 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Gestione") {
-                NavigationLink { ServicesView() } label: { Label("Servizi e listino", systemImage: "list.bullet.rectangle") }
-                NavigationLink { PackagesView() } label: { Label("Pacchetti", systemImage: "rectangle.stack") }
-                NavigationLink { ReportsView() } label: { Label("Statistiche ed estratti", systemImage: "chart.bar") }
-                NavigationLink { CredentialsView() } label: { Label("Credenziali e fatturazione", systemImage: "key") }
+                NavigationLink(value: AppRoute.services) { Label("Servizi e listino", systemImage: "list.bullet.rectangle") }
+                NavigationLink(value: AppRoute.packagesAll) { Label("Pacchetti", systemImage: "rectangle.stack") }
+                NavigationLink(value: AppRoute.reportsAll) { Label("Statistiche ed estratti", systemImage: "chart.bar") }
+                NavigationLink(value: AppRoute.credentials) { Label("Credenziali e fatturazione", systemImage: "key") }
             }
             Section("Archivio") {
                 LocalStorageNotice()
@@ -32,7 +32,7 @@ struct SettingsView: View {
                      ? "Sincronizzazione asincrona nel database iCloud privato. Nessuna promessa di aggiornamento istantaneo. Un cambio account chiude la scheda aperta per proteggere l'archivio."
                      : "Questa build salva solo sul dispositivo. Per iCloud servono container, capability e firma Apple, come descritto nel documento di progetto. Il semplice accesso allo stesso account non attiva la sincronizzazione.")
                     .font(.caption).foregroundStyle(.secondary)
-                NavigationLink { BackupView() } label: { Label("Backup e ripristino", systemImage: "externaldrive") }
+                NavigationLink(value: AppRoute.backup) { Label("Backup e ripristino", systemImage: "externaldrive") }
             }
             Section {
                 Button(role: .destructive) {

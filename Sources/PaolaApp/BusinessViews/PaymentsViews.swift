@@ -69,12 +69,10 @@ struct PaymentsView: View {
                         }
                         if let selectedClientID {
                             Section {
-                                NavigationLink("Ripartizione dei pagamenti") {
-                                    ClientAllocationsView(clientID: selectedClientID)
-                                }
-                                NavigationLink("Estratto conto ed esportazione") {
-                                    ReportsView(clientID: selectedClientID)
-                                }
+                                NavigationLink("Ripartizione dei pagamenti",
+                                               value: AppRoute.clientAllocations(selectedClientID))
+                                NavigationLink("Estratto conto ed esportazione",
+                                               value: AppRoute.clientReports(selectedClientID))
                             }
                         }
                     }
@@ -84,9 +82,7 @@ struct PaymentsView: View {
                                                    description: Text("Gli incassi compaiono registrando un pacchetto o completando una lezione senza pacchetto."))
                         }
                         ForEach(filteredEntries) { entry in
-                            NavigationLink {
-                                LedgerEntryDetailView(entry: entry)
-                            } label: {
+                            NavigationLink(value: AppRoute.ledgerEntry(entry.id)) {
                                 LedgerEntryRow(entry: entry)
                             }
                         }
@@ -206,7 +202,7 @@ struct LedgerEntryDetailView: View {
                     if let originalID = entry.originalEntryID,
                        let original = canonicalEntries.first(where: { $0.id == originalID }) {
                         Section("Movimento originale") {
-                            NavigationLink { LedgerEntryDetailView(entry: original) } label: {
+                            NavigationLink(value: AppRoute.ledgerEntry(original.id)) {
                                 LedgerEntryRow(entry: original)
                             }
                         }
@@ -214,15 +210,15 @@ struct LedgerEntryDetailView: View {
                     if !corrections.isEmpty {
                         Section("Rettifiche collegate") {
                             ForEach(corrections) { correction in
-                                NavigationLink { LedgerEntryDetailView(entry: correction) } label: {
+                                NavigationLink(value: AppRoute.ledgerEntry(correction.id)) {
                                     LedgerEntryRow(entry: correction)
                                 }
                             }
                         }
                     }
                     Section {
-                        NavigationLink("Saldo e tutti i movimenti") { PaymentsView(clientID: entry.clientID) }
-                        NavigationLink("Ripartizione dei pagamenti") { ClientAllocationsView(clientID: entry.clientID) }
+                        NavigationLink("Saldo e tutti i movimenti", value: AppRoute.clientPayments(entry.clientID))
+                        NavigationLink("Ripartizione dei pagamenti", value: AppRoute.clientAllocations(entry.clientID))
                     }
                 }
                 .formStyle(.grouped)
@@ -365,10 +361,10 @@ struct ClientAllocationsView: View {
             .reduce(max(0, payment.amountCents)) { max(0, $0 - min($0, max(0, $1.amountCents))) }
         let unallocated = paymentAllocations.reduce(afterRefunds) { max(0, $0 - min($0, $1.amountCents)) }
         return Section("Pagamento del \(BusinessFormatting.day(payment.date))") {
-            NavigationLink { LedgerEntryDetailView(entry: payment) } label: { LedgerEntryRow(entry: payment) }
+            NavigationLink(value: AppRoute.ledgerEntry(payment.id)) { LedgerEntryRow(entry: payment) }
             ForEach(Array(paymentAllocations.enumerated()), id: \.offset) { _, allocation in
                 if let charge = statement.entries.first(where: { $0.id == allocation.chargeID }) {
-                    NavigationLink { LedgerEntryDetailView(entry: charge) } label: {
+                    NavigationLink(value: AppRoute.ledgerEntry(charge.id)) {
                         VStack(alignment: .leading, spacing: 4) {
                             LabeledContent("Addebito del \(BusinessFormatting.day(charge.date))",
                                            value: Money.format(allocation.amountCents))

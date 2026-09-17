@@ -135,7 +135,7 @@ struct ReportsView: View {
                             .foregroundStyle(.secondary)
                     }
                     ForEach(statement.entries) { entry in
-                        NavigationLink { LedgerEntryDetailView(entry: entry) } label: { LedgerEntryRow(entry: entry) }
+                        NavigationLink(value: AppRoute.ledgerEntry(entry.id)) { LedgerEntryRow(entry: entry) }
                     }
                 }
                 Section {
@@ -217,9 +217,7 @@ struct ReportsView: View {
                 Label("Nessun importo da saldare", systemImage: "checkmark.circle").foregroundStyle(.teal)
             }
             ForEach(unpaid) { client in
-                NavigationLink {
-                    PaymentsView(clientID: client.id)
-                } label: {
+                NavigationLink(value: AppRoute.clientPayments(client.id)) {
                     LabeledContent(client.name + (client.archived ? " · archiviato" : ""),
                                    value: Money.format(client.balance))
                 }

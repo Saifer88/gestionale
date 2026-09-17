@@ -74,9 +74,7 @@ struct ClientsView: View {
             } else {
                 let unpaid = unpaidByClient
                 List(filteredClients) { client in
-                    NavigationLink {
-                        ClientDetailView(client: client)
-                    } label: {
+                    NavigationLink(value: AppRoute.client(client.id)) {
                         HStack(spacing: 12) {
                             ClientAvatar(client: client)
                             VStack(alignment: .leading, spacing: 4) {

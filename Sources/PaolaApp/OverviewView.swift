@@ -324,9 +324,7 @@ struct OverviewView: View {
             Text(dayHeader(day.date))
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(day.sessions) { session in
-                NavigationLink {
-                    SessionDetailView(session: session)
-                } label: {
+                NavigationLink(value: AppRoute.session(session.id)) {
                     upcomingRow(session)
                 }
                 .buttonStyle(.plain)

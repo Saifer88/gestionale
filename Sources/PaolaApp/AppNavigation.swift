@@ -84,6 +84,7 @@ struct AppNavigation: View {
         } detail: {
             NavigationStack {
                 destination(selectedSection ?? .overview)
+                    .appRouteDestinations()
             }
             .id(selectedSection)
         }
@@ -92,6 +93,7 @@ struct AppNavigation: View {
             ForEach([AppSection.overview, .agenda, .clients, .payments, .expenses, .settings]) { section in
                 NavigationStack {
                     destination(section)
+                        .appRouteDestinations()
                 }
                 .tabItem {
                     Label(section.title, systemImage: section.symbol)

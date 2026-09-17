@@ -317,9 +317,7 @@ struct AgendaView: View {
 
                 }
             }
-            NavigationLink {
-                SessionDetailView(session: session)
-            } label: {
+            NavigationLink(value: AppRoute.session(session.id)) {
                 CalendarSessionRow(
                     session: session, participants: participants, clients: clients,
                     conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
@@ -597,6 +595,7 @@ struct SessionDetailView: View {
         .sheet(item: $viewingClient) { client in
             NavigationStack {
                 ClientDetailView(client: client, isNested: true)
+                    .appRouteDestinations()
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Chiudi") { viewingClient = nil }
@@ -662,9 +661,7 @@ struct SessionDetailView: View {
                             Text(person.clientName).font(.headline)
                         }
                         if person.packageID != nil {
-                            NavigationLink {
-                                PackagesView(clientID: person.clientID)
-                            } label: {
+                            NavigationLink(value: AppRoute.clientPackages(person.clientID)) {
                                 Text("1 lezione da pacchetto · nessun addebito singolo")
                                     .font(.subheadline)
                             }
@@ -792,9 +789,7 @@ struct ClientSessionsView: View {
                         ContentUnavailableView("Nessun appuntamento", systemImage: "calendar")
                     }
                     ForEach(visibleSessions) { session in
-                        NavigationLink {
-                            SessionDetailView(session: session)
-                        } label: {
+                        NavigationLink(value: AppRoute.session(session.id)) {
                             VStack(alignment: .leading) {
                                 Text(BusinessFormatting.day(session.startDate)).font(.caption).foregroundStyle(.secondary)
                                 SessionSummaryRow(

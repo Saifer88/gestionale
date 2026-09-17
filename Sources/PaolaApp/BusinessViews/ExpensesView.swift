@@ -158,9 +158,7 @@ struct ExpensesView: View {
                 Text(Money.format(expense.amountCents)).monospacedDigit()
             }
             if let session = session(for: expense) {
-                NavigationLink {
-                    SessionDetailView(session: session)
-                } label: {
+                NavigationLink(value: AppRoute.session(session.id)) {
                     Label("Relativa a un appuntamento — modifica o elimina l'appuntamento per rimuoverla",
                           systemImage: "link")
                         .font(.caption)

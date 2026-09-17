@@ -35,24 +35,16 @@ struct ClientBusinessSection: View {
                 BalanceLabel(cents: BusinessReports.balance(clientID: client.id, entries: entries))
                 LabeledContent("Lezioni residue non scadute", value: "\(availableLessons)")
                 if !readOnly {
-                    NavigationLink {
-                        PaymentsView(clientID: client.id)
-                    } label: {
+                    NavigationLink(value: AppRoute.clientPayments(client.id)) {
                         Label("Saldo e cronologia movimenti", systemImage: "eurosign.circle")
                     }
-                    NavigationLink {
-                        PackagesView(clientID: client.id)
-                    } label: {
+                    NavigationLink(value: AppRoute.clientPackages(client.id)) {
                         Label("Pacchetti e utilizzi", systemImage: "square.stack.3d.up")
                     }
-                    NavigationLink {
-                        ClientSessionsView(clientID: client.id)
-                    } label: {
+                    NavigationLink(value: AppRoute.clientSessions(client.id)) {
                         Label("Storico appuntamenti", systemImage: "calendar")
                     }
-                    NavigationLink {
-                        ReportsView(clientID: client.id)
-                    } label: {
+                    NavigationLink(value: AppRoute.clientReports(client.id)) {
                         Label("Estratto conto ed esportazione", systemImage: "doc.text")
                     }
                 }
