@@ -28,6 +28,18 @@ struct ClientEditor: View {
                     TextField("Cognome", text: $draft.lastName)
                         .textContentType(.familyName)
                         .accessibilityIdentifier("client.lastName")
+                    Toggle("Data di nascita", isOn: Binding(
+                        get: { draft.birthDate != nil },
+                        set: { draft.birthDate = $0 ? (draft.birthDate ?? Date()) : nil }
+                    ))
+                    .accessibilityIdentifier("client.hasBirthDate")
+                    if draft.birthDate != nil {
+                        DatePicker("Nato il", selection: Binding(
+                            get: { draft.birthDate ?? Date() },
+                            set: { draft.birthDate = $0 }
+                        ), displayedComponents: .date)
+                        .accessibilityIdentifier("client.birthDate")
+                    }
                 } header: {
                     Text("Anagrafica")
                 } footer: {
@@ -84,16 +96,8 @@ struct ClientEditor: View {
                     Text("Solo informazioni utili all'organizzazione. Non inserire dati sanitari.")
                 }
 
-                Section {
-                    TextEditor(text: $draft.anamnesis)
-                        .frame(minHeight: 110)
-                        .accessibilityLabel("Anamnesi")
-                        .accessibilityIdentifier("client.anamnesis")
-                } header: {
-                    Text("Anamnesi")
-                } footer: {
-                    Text("Campo facoltativo e riservato. Registra soltanto le informazioni necessarie, nel rispetto della base giuridica e dell'informativa applicabili.")
-                }
+                // L'anamnesi è versionata e si compila dalla scheda cliente
+                // (sezione Anamnesi), non da questo editor.
 
                 Section {
                     TextEditor(text: $draft.physicalAnalysis)

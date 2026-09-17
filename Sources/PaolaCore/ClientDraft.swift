@@ -33,6 +33,7 @@ public struct ClientDraft {
     public var email: String = ""
     public var taxCode: String = ""
     public var billingAddress: String = ""
+    public var birthDate: Date?
     public var notes: String = ""
     public var anamnesis: String = ""
     public var physicalAnalysis: String = ""
@@ -52,6 +53,7 @@ public struct ClientDraft {
         email = client.email
         taxCode = client.taxCode
         billingAddress = client.billingAddress
+        birthDate = client.birthDate
         notes = client.notes
         anamnesis = client.anamnesis
         physicalAnalysis = client.physicalAnalysis

@@ -16,6 +16,7 @@ public struct ArchiveSnapshot: Codable {
         public var email: String
         public var taxCode: String
         public var billingAddress: String
+        public var birthDate: Date?
         public var notes: String
         public var anamnesis: String
         public var physicalAnalysis: String
@@ -34,6 +35,7 @@ public struct ArchiveSnapshot: Codable {
             email = client.email
             taxCode = client.taxCode
             billingAddress = client.billingAddress
+            birthDate = client.birthDate
             notes = client.notes
             anamnesis = client.anamnesis
             physicalAnalysis = client.physicalAnalysis
@@ -46,7 +48,7 @@ public struct ArchiveSnapshot: Codable {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case id, firstName, lastName, phone, email, taxCode, billingAddress, notes, anamnesis, physicalAnalysis
+            case id, firstName, lastName, phone, email, taxCode, billingAddress, birthDate, notes, anamnesis, physicalAnalysis
             case joinedOn, createdAt, updatedAt, isArchived
             case preferredServiceID, preferredRateID
         }
@@ -60,6 +62,7 @@ public struct ArchiveSnapshot: Codable {
             email = try values.decode(String.self, forKey: .email)
             taxCode = try values.decodeIfPresent(String.self, forKey: .taxCode) ?? ""
             billingAddress = try values.decodeIfPresent(String.self, forKey: .billingAddress) ?? ""
+            birthDate = try values.decodeIfPresent(Date.self, forKey: .birthDate)
             notes = try values.decode(String.self, forKey: .notes)
             anamnesis = try values.decodeIfPresent(String.self, forKey: .anamnesis) ?? ""
             physicalAnalysis = try values.decodeIfPresent(String.self, forKey: .physicalAnalysis) ?? ""
@@ -74,7 +77,7 @@ public struct ArchiveSnapshot: Codable {
         func model() -> Client {
             let client = Client(id: id, firstName: firstName, lastName: lastName, phone: phone,
                                 email: email, taxCode: taxCode, billingAddress: billingAddress,
-                                notes: notes, anamnesis: anamnesis,
+                                birthDate: birthDate, notes: notes, anamnesis: anamnesis,
                                 physicalAnalysis: physicalAnalysis, joinedOn: joinedOn,
                                 createdAt: createdAt, updatedAt: updatedAt, isArchived: isArchived,
                                 preferredServiceID: preferredServiceID, preferredRateID: preferredRateID)

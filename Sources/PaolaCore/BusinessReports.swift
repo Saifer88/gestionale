@@ -227,6 +227,47 @@ public enum BusinessReports {
         net(canonicalEntries(entries).filter { $0.clientID == clientID })
     }
 
+    /// Sintesi per la sezione "Saldi" del cliente.
+    public struct ClientTotals: Equatable {
+        public let completedCount: Int
+        public let unpaidCount: Int
+        public let totalValueCents: Int64
+        public init(completedCount: Int, unpaidCount: Int, totalValueCents: Int64) {
+            self.completedCount = completedCount
+            self.unpaidCount = unpaidCount
+            self.totalValueCents = totalValueCents
+        }
+    }
+
+    /// Contatori del cliente:
+    /// - `completedCount`: appuntamenti completati (in cui il cliente partecipa).
+    /// - `unpaidCount`: appuntamenti completati e non pagati (`isPaid == false`).
+    /// - `totalValueCents`: somma delle quote del cliente di TUTTI i suoi appuntamenti
+    ///   (ogni stato, deduplicati per partecipante) PIÙ i prezzi di tutti i suoi pacchetti.
+    public static func clientTotals(clientID: UUID, sessions: [TrainingSession],
+                                    participants: [SessionParticipant],
+                                    packages: [LessonPackage]) -> ClientTotals {
+        let clientSessionIDs = Set(participants.filter { $0.clientID == clientID }.map(\.sessionID))
+        let clientSessions = sessions.filter { clientSessionIDs.contains($0.id) }
+        let completed = clientSessions.filter { $0.status == .completed }
+        let completedCount = completed.count
+        let unpaidCount = completed.filter { !$0.isPaid }.count
+
+        // Quote del cliente su tutti gli appuntamenti (dedup per partecipante).
+        var seen = Set<UUID>()
+        let appointmentsValue = participants
+            .filter { $0.clientID == clientID }
+            .filter { seen.insert($0.id).inserted }
+            .reduce(Int64(0)) { saturatedAdd($0, max(0, $1.priceCents)) }
+        // Prezzi di tutti i pacchetti del cliente.
+        let packagesValue = packages
+            .filter { $0.clientID == clientID }
+            .reduce(Int64(0)) { saturatedAdd($0, max(0, $1.priceCents)) }
+
+        return ClientTotals(completedCount: completedCount, unpaidCount: unpaidCount,
+                            totalValueCents: saturatedAdd(appointmentsValue, packagesValue))
+    }
+
     /// Importo "da incassare" di un appuntamento per un cliente: il prezzo concordato
     /// dei partecipanti senza pacchetto (le lezioni coperte da pacchetto non hanno
     /// importo da incassare). Somma se il cliente compare più volte (deduplicato).
