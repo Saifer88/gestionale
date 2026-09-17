@@ -13,10 +13,36 @@ enum CalendarAppointments {
     }
 }
 
-/// Un giorno con i suoi appuntamenti, per l'elenco "prossimi appuntamenti".
+/// Un elemento dell'elenco "prossimi appuntamenti": un appuntamento o un'occorrenza
+/// di corso.
+enum UpcomingItem: Identifiable {
+    case session(TrainingSession)
+    case course(CourseOccurrence)
+
+    var id: String {
+        switch self {
+        case .session(let s): return "s:\(s.id.uuidString)"
+        case .course(let c): return "c:\(c.id)"
+        }
+    }
+    var start: Date {
+        switch self {
+        case .session(let s): return s.startDate
+        case .course(let c): return c.start
+        }
+    }
+    var end: Date {
+        switch self {
+        case .session(let s): return s.endDate
+        case .course(let c): return c.end
+        }
+    }
+}
+
+/// Un giorno con i suoi elementi (appuntamenti e corsi), per "prossimi appuntamenti".
 struct UpcomingDay: Identifiable {
     let date: Date
-    let sessions: [TrainingSession]
+    let items: [UpcomingItem]
     var id: TimeInterval { date.timeIntervalSinceReferenceDate }
 }
 
@@ -36,6 +62,7 @@ struct OverviewSummary {
     init(
         entries: [LedgerEntry], sessions: [TrainingSession], participants: [SessionParticipant],
         expenses: [Expense] = [], packages: [LessonPackage] = [],
+        courses: [Course] = [], courseParticipants: [CourseParticipant] = [],
         now: Date = Date(), calendar: Calendar = SchedulingSuggestions.calendar
     ) throws {
         income = try IncomeSummary(entries: entries, expenses: expenses, sessions: sessions,
@@ -57,15 +84,28 @@ struct OverviewSummary {
         }
         futureAppointmentsCount = futureSessions.count
 
-        // Elenco "prossimi appuntamenti": solo oggi e domani, raggruppati per giorno.
+        // Elenco "prossimi appuntamenti": oggi e domani, appuntamenti e corsi insieme.
         let tomorrowEnd = calendar.date(byAdding: .day, value: 2, to: dayStart) ?? day.end
-        let upcomingSessions = futureSessions.filter { $0.startDate < tomorrowEnd }
-        let grouped = Dictionary(grouping: upcomingSessions) { calendar.startOfDay(for: $0.startDate) }
+        // Occorrenze di corso nell'intervallo oggi→fine domani.
+        let courseInterval = DateInterval(start: dayStart, end: tomorrowEnd)
+        let courseOccurrences = CourseOccurrences.expand(
+            courses: courses, participants: courseParticipants, packages: packages,
+            in: courseInterval, now: now, calendar: calendar)
+
+        var upcomingItems: [UpcomingItem] = futureSessions
+            .filter { $0.startDate < tomorrowEnd }
+            .map { UpcomingItem.session($0) }
+        upcomingItems += courseOccurrences.map { UpcomingItem.course($0) }
+
+        // In "oggi" non mostrare ciò che è già terminato (fine < adesso).
+        upcomingItems = upcomingItems.filter { $0.end > now }
+
+        let grouped = Dictionary(grouping: upcomingItems) { calendar.startOfDay(for: $0.start) }
         upcoming = grouped.keys.sorted().map { dayKey in
             let items = grouped[dayKey]!.sorted {
-                $0.startDate == $1.startDate ? $0.id.uuidString < $1.id.uuidString : $0.startDate < $1.startDate
+                $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start
             }
-            return UpcomingDay(date: dayKey, sessions: items)
+            return UpcomingDay(date: dayKey, items: items)
         }
 
         unpaidByClient = BusinessReports.unpaidCompletedByClient(sessions: sessions, participants: participants)

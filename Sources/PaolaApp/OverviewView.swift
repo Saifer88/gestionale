@@ -11,6 +11,8 @@ struct OverviewView: View {
     @Query private var blocks: [Unavailability]
     @Query private var expenses: [Expense]
     @Query private var packages: [LessonPackage]
+    @Query private var courses: [Course]
+    @Query private var courseParticipants: [CourseParticipant]
     let addClient: () -> Void
     @Environment(\.modelContext) private var context
     @State private var creatingSession = false
@@ -21,7 +23,8 @@ struct OverviewView: View {
     private var readError: Error? {
         let errors: [Error?] = [
             _clients.fetchError, _entries.fetchError, _sessions.fetchError, _participants.fetchError,
-            _blocks.fetchError, _expenses.fetchError, _packages.fetchError
+            _blocks.fetchError, _expenses.fetchError, _packages.fetchError,
+            _courses.fetchError, _courseParticipants.fetchError
         ]
         return errors.compactMap { $0 }.first
     }
@@ -59,7 +62,8 @@ struct OverviewView: View {
     private func dashboard(at now: Date) -> some View {
         switch Result(catching: {
             try OverviewSummary(entries: entries, sessions: sessions, participants: participants,
-                                expenses: expenses, packages: packages, now: now)
+                                expenses: expenses, packages: packages,
+                                courses: courses, courseParticipants: courseParticipants, now: now)
         }) {
         case .failure(let error):
             ArchiveReadErrorView(error: error)
@@ -323,14 +327,47 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(dayHeader(day.date))
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            ForEach(day.sessions) { session in
-                NavigationLink(value: AppRoute.session(session.id)) {
-                    upcomingRow(session)
+            ForEach(day.items) { item in
+                switch item {
+                case .session(let session):
+                    NavigationLink(value: AppRoute.session(session.id)) {
+                        upcomingRow(session)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("overview.appointment.\(session.id.uuidString)")
+                case .course(let occurrence):
+                    NavigationLink(value: AppRoute.course(occurrence.course.id)) {
+                        upcomingCourseRow(occurrence)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("overview.course.\(occurrence.course.id.uuidString)")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("overview.appointment.\(session.id.uuidString)")
             }
         }
+    }
+
+    /// Riga compatta di un'occorrenza di corso: orario, titolo, partecipanti, icona corso
+    /// in basso a destra (coerente con l'agenda).
+    private func upcomingCourseRow(_ occurrence: CourseOccurrence) -> some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(SchedulingSuggestions.hourLabel(occurrence.start))
+                    .font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
+                Text(occurrence.course.title.isEmpty ? "Corso" : occurrence.course.title)
+                    .font(.subheadline)
+                if !occurrence.participantNames.isEmpty {
+                    Text(occurrence.participantNames.joined(separator: ", "))
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "figure.strengthtraining.traditional")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.purple)
+                .accessibilityLabel("Corso")
+        }
+        .padding(.vertical, 6).padding(.horizontal, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.10)))
+        .accessibilityElement(children: .combine)
     }
 
     /// Riga compatta di un appuntamento nella Overview: orario, clienti e stato,
