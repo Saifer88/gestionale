@@ -400,6 +400,7 @@ public final class BusinessRepository {
             expense.date = draft.date
             expense.amountCents = draft.amountCents
             expense.kind = draft.kind
+            expense.isPersonal = draft.isPersonal
             expense.updatedAt = Date()
             return expense.id
         }

@@ -26,6 +26,9 @@ public enum ExpenseKind: String, CaseIterable, Identifiable, Codable, Sendable {
     public var amountCents: Int64 = 0
     public var kindRaw: String = "oneTime"
     public var sourceKey: String = ""
+    /// Spesa personale (schema V15): esclusa dai riepiloghi economici (spese/EBIT/netto).
+    /// Default false. Le commissioni automatiche (Stripe/carta) restano NON personali.
+    public var isPersonal: Bool = false
     public var createdAt: Date = Date()
     public var updatedAt: Date = Date()
 
@@ -36,9 +39,11 @@ public enum ExpenseKind: String, CaseIterable, Identifiable, Codable, Sendable {
 
     public init(id: UUID = UUID(), name: String = "", date: Date = Date(),
                 amountCents: Int64 = 0, kind: ExpenseKind = .oneTime, sourceKey: String = "",
+                isPersonal: Bool = false,
                 createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id; self.name = name; self.date = date
         self.amountCents = amountCents; self.kindRaw = kind.rawValue; self.sourceKey = sourceKey
+        self.isPersonal = isPersonal
         self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }

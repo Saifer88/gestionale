@@ -22,6 +22,15 @@ struct IncomeSummary {
     let monthlyTax: TaxBreakdown
     let annualTax: TaxBreakdown
 
+    // Spese personali del periodo (escluse dal riepilogo economico). Le annuali sono
+    // cappate al mese corrente, come le spese attività e il netto annuale.
+    let monthlyPersonalExpensesCents: Int64
+    let annualPersonalExpensesCents: Int64
+
+    // Bilancio personale = Netto − spese personali del periodo.
+    var monthlyPersonalBalanceCents: Int64 { monthlyTax.netCents - monthlyPersonalExpensesCents }
+    var annualPersonalBalanceCents: Int64 { annualTax.netCents - annualPersonalExpensesCents }
+
     init(entries: [LedgerEntry], expenses: [Expense] = [],
          sessions: [TrainingSession] = [], packages: [LessonPackage] = [],
          now: Date = Date(), calendar: Calendar = SchedulingSuggestions.calendar) throws {
@@ -57,5 +66,10 @@ struct IncomeSummary {
         annualTax = BusinessReports.taxSummary(from: year.start, to: year.end,
                                                entries: entries, sessions: sessions, packages: packages,
                                                expensesCents: annualExpensesCents)
+        // Spese personali del periodo (annuali cappate al mese corrente, come sopra).
+        monthlyPersonalExpensesCents = ExpenseReports.totalPersonal(expenses, from: month.start,
+                                                                    to: month.end, calendar: calendar)
+        annualPersonalExpensesCents = ExpenseReports.totalPersonal(expenses, from: year.start,
+                                                                   to: min(year.end, month.end), calendar: calendar)
     }
 }

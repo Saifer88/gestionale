@@ -12,7 +12,7 @@ public enum PaolaSchemaV13: VersionedSchema {
         [
             Client.self, TrainingService.self, ServiceRate.self, TrainingSession.self,
             SessionParticipant.self, LessonPackage.self, PackageUse.self, LedgerEntry.self,
-            Unavailability.self, ClientAppointmentPreference.self, Invoice.self, Expense.self
+            Unavailability.self, ClientAppointmentPreference.self, Invoice.self, PaolaSchemaV14.Expense.self
         ]
     }
 }

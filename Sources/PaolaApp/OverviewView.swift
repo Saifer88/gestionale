@@ -113,6 +113,7 @@ struct OverviewView: View {
 
     private func metricsColumn(_ summary: OverviewSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Spese attività")
             // Incassi, Spese ed EBIT affiancati, con la stessa altezza.
             HStack(alignment: .top, spacing: 12) {
                 metricGroup("Incassi", symbol: "arrow.down.circle.fill", tint: .green, rows: [
@@ -138,10 +139,32 @@ struct OverviewView: View {
             .fixedSize(horizontal: false, vertical: true)
             // Netto a tutta larghezza.
             netGroup(summary)
+
+            // Spese personali: bilancio personale = Netto − spese personali.
+            sectionTitle("Spese personali")
+            personalBalanceGroup(summary)
             unpaidGroup(summary.unpaidByClient)
+
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("overview.metrics")
+    }
+
+    /// Titolo di sezione nella colonna metriche.
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.title3.weight(.semibold))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+    }
+
+    /// Riquadro "Bilancio personale": Netto − spese personali, mese e anno, stesso
+    /// stile e regole degli altri riquadri economici.
+    private func personalBalanceGroup(_ summary: OverviewSummary) -> some View {
+        metricGroup("Bilancio personale", symbol: "person.crop.circle.badge.checkmark", tint: .pink, rows: [
+            ("Mese", Money.format(summary.income.monthlyPersonalBalanceCents), "overview.personalBalance.month"),
+            ("Anno", Money.format(summary.income.annualPersonalBalanceCents), "overview.personalBalance.year")
+        ])
     }
 
     /// Gruppo "Netto" a tutta larghezza: neri, bianchi, INPS, imposte in colonne strette

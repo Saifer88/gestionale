@@ -38,6 +38,17 @@ struct ExpensesView: View {
               let month = calendar.dateInterval(of: .month, for: Date()) else { return 0 }
         return ExpenseReports.total(expenses, from: year.start, to: min(year.end, month.end), calendar: calendar)
     }
+    private var monthlyPersonalCents: Int64 {
+        let calendar = SchedulingSuggestions.calendar
+        guard let month = calendar.dateInterval(of: .month, for: Date()) else { return 0 }
+        return ExpenseReports.totalPersonal(expenses, from: month.start, to: month.end, calendar: calendar)
+    }
+    private var annualPersonalCents: Int64 {
+        let calendar = SchedulingSuggestions.calendar
+        guard let year = calendar.dateInterval(of: .year, for: Date()),
+              let month = calendar.dateInterval(of: .month, for: Date()) else { return 0 }
+        return ExpenseReports.totalPersonal(expenses, from: year.start, to: min(year.end, month.end), calendar: calendar)
+    }
 
     var body: some View {
         Group {
@@ -67,16 +78,16 @@ struct ExpensesView: View {
     private var content: some View {
         List {
             Section {
-                LabeledContent("Totale mese") {
-                    Text(Money.format(monthlyCents)).monospacedDigit().font(.headline)
+                HStack(alignment: .top, spacing: 12) {
+                    totalsColumn(title: "Spese attività",
+                                 month: monthlyCents, year: annualCents,
+                                 tint: .orange, idPrefix: "expenses.total")
+                    totalsColumn(title: "Spese personali",
+                                 month: monthlyPersonalCents, year: annualPersonalCents,
+                                 tint: .pink, idPrefix: "expenses.personal.total")
                 }
-                .accessibilityIdentifier("expenses.total.month")
-                LabeledContent("Totale anno") {
-                    Text(Money.format(annualCents)).monospacedDigit().font(.headline)
-                }
-                .accessibilityIdentifier("expenses.total.year")
             } footer: {
-                Text("Le spese ricorrenti mensili sono considerate il primo giorno di ogni mese.")
+                Text("Le spese ricorrenti mensili sono considerate il primo giorno di ogni mese. Le spese personali sono escluse dai riepiloghi economici.")
             }
             if recurring.isEmpty && oneTime.isEmpty {
                 ContentUnavailableView("Nessuna spesa", systemImage: "banknote",
@@ -93,6 +104,24 @@ struct ExpensesView: View {
                 }
             }
         }
+    }
+
+    /// Colonna di totali (mese/anno) per il recap in alto: usata sia per le spese
+    /// attività sia per le spese personali, stesso stile.
+    private func totalsColumn(title: String, month: Int64, year: Int64,
+                              tint: Color, idPrefix: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(tint)
+            LabeledContent("Mese") {
+                Text(Money.format(month)).monospacedDigit().font(.headline)
+            }
+            .accessibilityIdentifier("\(idPrefix).month")
+            LabeledContent("Anno") {
+                Text(Money.format(year)).monospacedDigit().font(.headline)
+            }
+            .accessibilityIdentifier("\(idPrefix).year")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private func row(_ expense: Expense, showsDate: Bool) -> some View {
@@ -112,7 +141,13 @@ struct ExpensesView: View {
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(expense.name).font(.body)
+                        HStack(spacing: 4) {
+                            Text(expense.name).font(.body)
+                            if expense.isPersonal {
+                                Image(systemName: "person.fill")
+                                    .font(.caption2).foregroundStyle(.orange)
+                            }
+                        }
                         Text(showsDate ? BusinessFormatting.day(expense.date)
                                        : "Dal \(BusinessFormatting.day(expense.date))")
                             .font(.caption).foregroundStyle(.secondary)
@@ -189,6 +224,7 @@ struct ExpenseEditor: View {
     @State private var amount: String
     @State private var kind: ExpenseKind
     @State private var date: Date
+    @State private var isPersonal: Bool
     @State private var operation = BusinessOperation()
 
     init(draft: ExpenseDraft) {
@@ -197,6 +233,7 @@ struct ExpenseEditor: View {
         _amount = State(initialValue: BusinessFormatting.editableMoney(draft.amountCents))
         _kind = State(initialValue: draft.kind)
         _date = State(initialValue: draft.date)
+        _isPersonal = State(initialValue: draft.isPersonal)
     }
 
     var body: some View {
@@ -214,10 +251,18 @@ struct ExpenseEditor: View {
                     DatePicker(kind == .monthlyRecurring ? "Attiva dal" : "Data spesa",
                                selection: $date, displayedComponents: .date)
                         .accessibilityIdentifier("expense.date")
+                    Toggle("Spesa personale", isOn: $isPersonal)
+                        .accessibilityIdentifier("expense.isPersonal")
                 } footer: {
-                    Text(kind == .monthlyRecurring
-                         ? "Sarà considerata il primo giorno di ogni mese, a partire dal mese indicato."
-                         : "Spesa singola registrata nella data indicata.")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(kind == .monthlyRecurring
+                             ? "Sarà considerata il primo giorno di ogni mese, a partire dal mese indicato."
+                             : "Spesa singola registrata nella data indicata.")
+                        if isPersonal {
+                            Text("Le spese personali sono escluse dai riepiloghi economici (spese, EBIT, netto).")
+                                .foregroundStyle(.orange)
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -248,6 +293,7 @@ struct ExpenseEditor: View {
             draft.amountCents = try Money.parse(amount)
             draft.kind = kind
             draft.date = date
+            draft.isPersonal = isPersonal
             _ = try BusinessRepository(context: context).saveExpense(draft)
             dismiss()
         } catch { operation.capture(error) }

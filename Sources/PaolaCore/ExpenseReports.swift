@@ -10,8 +10,23 @@ import Foundation
 public enum ExpenseReports {
 
     /// Totale spese (centesimi) che ricadono nell'intervallo `[from, to)`.
+    /// Le spese personali (`isPersonal == true`) sono escluse dal riepilogo economico.
     public static func total(_ expenses: [Expense], from: Date, to: Date,
                              calendar: Calendar = SchedulingSuggestions.calendar) -> Int64 {
+        sum(expenses.filter { !$0.isPersonal }, from: from, to: to, calendar: calendar)
+    }
+
+    /// Totale delle sole spese personali nell'intervallo `[from, to)`. Usato per il
+    /// "Bilancio personale" (Netto − spese personali), separato dal riepilogo economico.
+    public static func totalPersonal(_ expenses: [Expense], from: Date, to: Date,
+                                     calendar: Calendar = SchedulingSuggestions.calendar) -> Int64 {
+        sum(expenses.filter { $0.isPersonal }, from: from, to: to, calendar: calendar)
+    }
+
+    /// Somma degli importi (centesimi) di un insieme di spese già filtrato, applicando
+    /// le regole una tantum/ricorrente sull'intervallo `[from, to)`.
+    private static func sum(_ expenses: [Expense], from: Date, to: Date,
+                            calendar: Calendar) -> Int64 {
         var sum: Int64 = 0
         for expense in expenses {
             switch expense.kind {

@@ -672,11 +672,13 @@ public struct BusinessArchive: Codable, Equatable {
         public var amountCents: Int64
         public var kindRaw: String
         public var sourceKey: String
+        public var isPersonal: Bool
         public var createdAt: Date
         public var updatedAt: Date
         public init(_ value: Expense) {
             id = value.id; name = value.name; date = value.date
             amountCents = value.amountCents; kindRaw = value.kindRaw; sourceKey = value.sourceKey
+            isPersonal = value.isPersonal
             createdAt = value.createdAt; updatedAt = value.updatedAt
         }
         public init(from decoder: Decoder) throws {
@@ -687,12 +689,14 @@ public struct BusinessArchive: Codable, Equatable {
             amountCents = try c.decode(Int64.self, forKey: .amountCents)
             kindRaw = try c.decodeIfPresent(String.self, forKey: .kindRaw) ?? "oneTime"
             sourceKey = try c.decodeIfPresent(String.self, forKey: .sourceKey) ?? ""
+            isPersonal = try c.decodeIfPresent(Bool.self, forKey: .isPersonal) ?? false
             createdAt = try c.decode(Date.self, forKey: .createdAt)
             updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         }
         internal func model() -> Expense {
             Expense(id: id, name: name, date: date, amountCents: amountCents,
                     kind: ExpenseKind(rawValue: kindRaw) ?? .oneTime, sourceKey: sourceKey,
+                    isPersonal: isPersonal,
                     createdAt: createdAt, updatedAt: updatedAt)
         }
     }

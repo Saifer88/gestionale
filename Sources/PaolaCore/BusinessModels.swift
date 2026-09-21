@@ -437,10 +437,12 @@ public struct ExpenseDraft {
     public var date = Date()
     public var amountCents: Int64 = 0
     public var kind: ExpenseKind = .oneTime
+    public var isPersonal = false
     public init() {}
     public init(_ model: Expense) {
         id = model.id; name = model.name; date = model.date
         amountCents = model.amountCents; kind = model.kind
+        isPersonal = model.isPersonal
     }
 }
 
