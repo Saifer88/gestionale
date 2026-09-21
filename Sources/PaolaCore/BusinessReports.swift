@@ -432,6 +432,46 @@ public enum BusinessReports {
             hourlyIncomeCents: seconds > 0 ? (Double(received) - Double(refunded)) / (seconds / 3600) : nil)
     }
 
+    /// Netto orario (centesimi per ora): incassi imputati diviso ore lavorate, sui soli
+    /// appuntamenti completati con importo imputato > 0. Regole:
+    /// - Quota di un partecipante senza pacchetto: il suo `priceCents` (se > 0).
+    /// - Quota di un partecipante con pacchetto: prezzo del pacchetto diviso il numero
+    ///   di lezioni (capienza) del pacchetto — la quota "per lezione".
+    /// - Un appuntamento contribuisce con le proprie ore (durata) una sola volta se ha
+    ///   almeno una quota imputata > 0; gli appuntamenti interamente a 0€ sono esclusi.
+    /// Restituisce nil se non ci sono ore valide (nessun appuntamento idoneo).
+    public static func netHourlyCents(sessions: [TrainingSession], participants: [SessionParticipant],
+                                      packages: [LessonPackage]) -> Double? {
+        let packageByID = Dictionary(packages.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var totalCents: Double = 0
+        var totalHours: Double = 0
+        var seenSessions = Set<UUID>()
+        for session in sessions
+        where session.statusRaw == SessionStatus.completed.rawValue
+            && seenSessions.insert(session.id).inserted
+            && session.durationMinutes > 0 {
+            var sessionCents: Int64 = 0
+            var seenParticipants = Set<UUID>()
+            for participant in participants
+            where participant.sessionID == session.id && seenParticipants.insert(participant.id).inserted {
+                if let packageID = participant.packageID {
+                    // Quota per lezione del pacchetto: prezzo / capienza (numero di lezioni).
+                    if let package = packageByID[packageID], package.capacity > 0, package.priceCents > 0 {
+                        sessionCents = saturatedAdd(sessionCents, package.priceCents / Int64(package.capacity))
+                    }
+                } else if participant.priceCents > 0 {
+                    sessionCents = saturatedAdd(sessionCents, participant.priceCents)
+                }
+            }
+            // Solo appuntamenti con importo imputato > 0 concorrono a incassi e ore.
+            guard sessionCents > 0 else { continue }
+            totalCents += Double(sessionCents)
+            totalHours += Double(session.durationMinutes) / 60.0
+        }
+        guard totalHours > 0 else { return nil }
+        return totalCents / totalHours
+    }
+
     internal static func canonicalEntries(_ entries: [LedgerEntry]) -> [LedgerEntry] {
         var ids = Set<UUID>()
         var sources = Set<String>()

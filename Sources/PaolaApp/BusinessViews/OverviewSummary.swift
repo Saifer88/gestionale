@@ -58,6 +58,10 @@ struct OverviewSummary {
     let futureAppointmentsCount: Int
     /// Clienti con lezioni completate non pagate e residuo, per la panoramica.
     let unpaidByClient: [UnpaidClientSummary]
+    /// Netto orario (centesimi/ora): incassi imputati diviso ore lavorate, sui soli
+    /// appuntamenti completati con importo > 0. Le quote a pacchetto valgono
+    /// prezzo pacchetto / lezioni. nil se non ci sono ore valide.
+    let netHourlyCents: Double?
 
     init(
         entries: [LedgerEntry], sessions: [TrainingSession], participants: [SessionParticipant],
@@ -109,6 +113,7 @@ struct OverviewSummary {
         }
 
         unpaidByClient = BusinessReports.unpaidCompletedByClient(sessions: sessions, participants: participants)
+        netHourlyCents = BusinessReports.netHourlyCents(sessions: sessions, participants: participants, packages: packages)
 
         let futureIDs = Set(planned.filter { $0.startDate > now }.map(\.id))
         var forecast: Int64 = 0

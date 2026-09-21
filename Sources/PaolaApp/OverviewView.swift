@@ -77,7 +77,7 @@ struct OverviewView: View {
                         dashboardBody(summary, width: min(geo.size.width, 1200))
                     }
                     .padding(24)
-                    .frame(maxWidth: 1200)
+                    //.frame(maxWidth: 1200)
                     .frame(maxWidth: .infinity)
                 }
             }
@@ -98,7 +98,7 @@ struct OverviewView: View {
                 upcomingColumn(summary)
             }
         } else {
-            let fraction: CGFloat = available >= 900 ? 0.25 : (1.0 / 3.0)
+            let fraction: CGFloat = 1.0 / 3.0
             let upcomingWidth = available * fraction
             HStack(alignment: .top, spacing: spacing) {
                 metricsColumn(summary)
@@ -303,6 +303,9 @@ struct OverviewView: View {
                 compactCounter("Clienti settimana", summary.bookedClientsThisWeek.formatted(),
                                "person.2", tint: .teal)
                     .accessibilityIdentifier("overview.week.clients")
+                compactCounter("Netto paga oraria", netHourlyLabel(summary.netHourlyCents),
+                               "clock.badge.checkmark", tint: .green)
+                    .accessibilityIdentifier("overview.week.netHourly")
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("overview.row.week")
@@ -457,6 +460,12 @@ struct OverviewView: View {
     /// Importo in euro interi, senza centesimi (es. "45 €").
     private func euroLabel(_ cents: Int64) -> String {
         "\(cents / 100) €"
+    }
+
+    /// Netto orario formattato in €/h (es. "42 €/h"), oppure "—" se non calcolabile.
+    private func netHourlyLabel(_ cents: Double?) -> String {
+        guard let cents, cents > 0 else { return "—" }
+        return "\(Int((cents / 100).rounded())) €"
     }
 
     /// Intestazione del giorno con nome (es. "Oggi", "Domani" o "Lunedì 5 maggio").
