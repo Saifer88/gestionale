@@ -169,7 +169,7 @@ struct SessionEditor: View {
                 .accessibilityIdentifier("session.client1")
                 .disabled(readOnly)
             } header: {
-                Text("Prima scegli il cliente")
+                Text("Scegli il partecipante")
             } footer: {
                 Text("Il servizio e la tariffa preferiti della scheda cliente hanno precedenza. In assenza di preferenze si riprendono le ultime scelte; orario e pacchetto restano quelli usati di recente.")
             }
@@ -187,11 +187,7 @@ struct SessionEditor: View {
                     }
                 }
                 Group {
-                    scheduleSection
                     billingSection
-                    ForEach($additionalPeople) { $person in
-                        additionalEditor($person)
-                    }
                     Section {
                         Button("Aggiungi partecipante", systemImage: "person.badge.plus") {
                             var person = AdditionalParticipantDraft()
@@ -200,8 +196,9 @@ struct SessionEditor: View {
                             additionalPeople.append(person)
                         }
                         .accessibilityIdentifier("session.addParticipant")
-                    } footer: {
-                        Text("Servizio, giorno e orario sono condivisi. Ogni partecipante ha una propria tariffa e può usare il proprio pacchetto.")
+                    }
+                    ForEach($additionalPeople) { $person in
+                        additionalEditor($person)
                     }
                     if session == nil {
                         Section("Selezione rapida") {
@@ -209,6 +206,7 @@ struct SessionEditor: View {
                                                     sessions: sessions, blocks: blocks, excludingSessionID: draft.id)
                         }
                     }
+                    scheduleSection
                     Section("Note") {
                         TextField("Note organizzative (facoltative)", text: $draft.notes, axis: .vertical)
                             .lineLimit(3...8).accessibilityIdentifier("session.notes")
@@ -230,16 +228,6 @@ struct SessionEditor: View {
 
     private var scheduleSection: some View {
         Section("Appuntamento") {
-            Picker("Servizio", selection: Binding(get: { draft.serviceID }, set: selectService)) {
-                Text("Seleziona servizio").tag(nil as UUID?)
-                ForEach(selectableServices) { service in
-                    Text(serviceLabel(service)).tag(Optional(service.id))
-                }
-            }
-            .accessibilityIdentifier("session.service")
-            if selectableServices.isEmpty {
-                Text("Crea un servizio in Servizi e tariffe.").font(.caption).foregroundStyle(.orange)
-            }
             DatePicker("Inizio (scelta manuale)", selection: $draft.startDate).accessibilityIdentifier("session.startDate")
             LabeledContent("Orario selezionato", value: SchedulingSuggestions.hourLabel(draft.startDate))
                 .accessibilityIdentifier("session.selectedTime")
@@ -253,6 +241,16 @@ struct SessionEditor: View {
 
     private var billingSection: some View {
         Section("Tariffa e pacchetto") {
+            Picker("Servizio", selection: Binding(get: { draft.serviceID }, set: selectService)) {
+                Text("Seleziona servizio").tag(nil as UUID?)
+                ForEach(selectableServices) { service in
+                    Text(serviceLabel(service)).tag(Optional(service.id))
+                }
+            }
+            .accessibilityIdentifier("session.service")
+            if selectableServices.isEmpty {
+                Text("Crea un servizio in Servizi e tariffe.").font(.caption).foregroundStyle(.orange)
+            }
             Picker("Pacchetto in uso", selection: $packageID) {
                 Text("No").tag(nil as UUID?)
                 ForEach(availablePackages) { package in

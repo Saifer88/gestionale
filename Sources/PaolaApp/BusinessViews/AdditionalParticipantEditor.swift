@@ -25,8 +25,7 @@ enum SessionPackageChoices {
     }
 
     static func label(_ package: LessonPackage, uses: [PackageUse]) -> String {
-        "Pacchetto del \(BusinessFormatting.day(package.purchasedOn)) · \(BusinessReports.remaining(package: package, uses: uses))/\(package.capacity) residue"
-            + (package.expiresOn.map { " · scade \(BusinessFormatting.day($0))" } ?? " · senza scadenza")
+        "Pacchetto da \(package.capacity) (\(package.priceCents/100)€) - \(BusinessReports.remaining(package: package, uses: uses)) residui"
     }
 }
 

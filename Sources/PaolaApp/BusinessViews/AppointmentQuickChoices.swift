@@ -28,9 +28,7 @@ struct AppointmentQuickChoices: View {
                 .font(.caption).foregroundStyle(.orange)
         case .success(let choices):
             VStack(alignment: .leading, spacing: 12) {
-                Text("Giorni proposti").font(.subheadline.bold())
-                Text("Giorni feriali da oggi a venerdì della prossima settimana")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("Giorno").font(.subheadline.bold())
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], alignment: .leading, spacing: 8) {
                     ForEach(choices.days, id: \.self) { day in
                         choiceButton(
@@ -40,9 +38,7 @@ struct AppointmentQuickChoices: View {
                         .accessibilityIdentifier("session.quickDay.\(Int(day.timeIntervalSince1970))")
                     }
                 }
-                Text("Orari disponibili · \(durationMinutes) minuti").font(.subheadline.bold())
-                Text("Ore 7, 8, 9, 10, 13, 14, 15, 16, 17, 18, 19 e 20. Solo orari liberi per l'intera durata.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("Orario · \(durationMinutes) minuti").font(.subheadline.bold())
                 if choices.hours.isEmpty {
                     Label("Nessun orario libero a minuti 00 per questo giorno e questa durata.",
                           systemImage: "calendar.badge.exclamationmark")
