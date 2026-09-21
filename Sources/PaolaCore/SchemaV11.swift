@@ -9,8 +9,8 @@ public enum PaolaSchemaV11: VersionedSchema {
     public static var versionIdentifier: Schema.Version { Schema.Version(11, 0, 0) }
     public static var models: [any PersistentModel.Type] {
         [
-            PaolaSchemaV7.Client.self, TrainingService.self, ServiceRate.self, TrainingSession.self,
-            SessionParticipant.self, PaolaSchemaV12.LessonPackage.self, PackageUse.self, LedgerEntry.self,
+            PaolaSchemaV7.Client.self, TrainingService.self, ServiceRate.self, PaolaSchemaV15.TrainingSession.self,
+            PaolaSchemaV15.SessionParticipant.self, PaolaSchemaV12.LessonPackage.self, PackageUse.self, LedgerEntry.self,
             Unavailability.self, ClientAppointmentPreference.self, Invoice.self, PaolaSchemaV14.Expense.self
         ]
     }

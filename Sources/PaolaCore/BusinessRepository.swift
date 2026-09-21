@@ -188,10 +188,6 @@ public final class BusinessRepository {
                     durationMinutes: draft.durationMinutes, updatedAt: session.updatedAt))
             }
             
-            if draft.participants.count == 1 && draft.participants[0].packageID != nil {
-                session.isPaid = true
-            }
-
             return session.id
         }
     }
@@ -335,28 +331,39 @@ public final class BusinessRepository {
         }
     }
 
-    /// Imposta il contrassegno manuale "pagato" su un appuntamento. Non genera né
-    /// modifica movimenti economici: è solo un promemoria per il trainer.
-    public func setSessionPaid(_ id: UUID, _ paid: Bool) throws {
+    /// Imposta il contrassegno manuale "pagato" su un singolo partecipante. Non genera
+    /// né modifica movimenti economici: è solo un promemoria per il trainer. Senza
+    /// effetto sui partecipanti con pacchetto (il pagamento è gestito dal pacchetto).
+    public func setParticipantPaid(_ id: UUID, _ paid: Bool) throws {
         try transact { writer in
-            let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
-            if session.isPaid == paid { return }
-            session.isPaid = paid
-            session.updatedAt = Date()
+            let participant = try find(id, in: writer, type: SessionParticipant.self, name: "Partecipante")
+            guard participant.packageID == nil else { return }
+            if participant.isPaid == paid { return }
+            participant.isPaid = paid
+            if let session = try? find(participant.sessionID, in: writer, type: TrainingSession.self, name: "Lezione") {
+                session.updatedAt = Date()
+            }
         }
     }
 
-    /// Imposta il contrassegno "pagato" su più appuntamenti in un'unica transazione.
-    /// Usato per saldare in blocco le lezioni non pagate di un cliente.
-    public func setSessionsPaid(_ ids: [UUID], _ paid: Bool) throws {
-        guard !ids.isEmpty else { return }
+    /// Imposta il contrassegno "pagato" sulla quota di un cliente in più appuntamenti,
+    /// in un'unica transazione. Usato per saldare in blocco le lezioni non pagate di un
+    /// cliente: aggiorna solo i partecipanti di quel cliente (senza pacchetto), non gli
+    /// altri partecipanti eventualmente presenti nelle stesse sessioni.
+    public func setSessionsPaid(_ sessionIDs: [UUID], clientID: UUID, _ paid: Bool) throws {
+        guard !sessionIDs.isEmpty else { return }
         try transact { writer in
             let now = Date()
-            for id in ids {
-                let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
-                if session.isPaid == paid { continue }
-                session.isPaid = paid
-                session.updatedAt = now
+            let ids = Set(sessionIDs)
+            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>())
+                .filter { ids.contains($0.sessionID) && $0.clientID == clientID && $0.packageID == nil }
+            for participant in participants where participant.isPaid != paid {
+                participant.isPaid = paid
+            }
+            for id in sessionIDs {
+                if let session = try? find(id, in: writer, type: TrainingSession.self, name: "Lezione") {
+                    session.updatedAt = now
+                }
             }
         }
     }
@@ -831,6 +838,7 @@ public final class BusinessRepository {
             switch model {
             case let value as TrainingService: return value.id == id
             case let value as TrainingSession: return value.id == id
+            case let value as SessionParticipant: return value.id == id
             case let value as LessonPackage: return value.id == id
             case let value as LedgerEntry: return value.id == id
             case let value as Unavailability: return value.id == id

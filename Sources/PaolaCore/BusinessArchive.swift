@@ -38,6 +38,18 @@ public struct BusinessArchive: Codable, Equatable {
         expenses = try values.decodeIfPresent([ExpenseRecord].self, forKey: .expenses) ?? []
         courses = try values.decodeIfPresent([CourseRecord].self, forKey: .courses) ?? []
         courseParticipants = try values.decodeIfPresent([CourseParticipantRecord].self, forKey: .courseParticipants) ?? []
+
+        // Retrocompatibilità con backup pre-V16: `isPaid` viveva sulla sessione. Se un
+        // partecipante non aveva `isPaid` nel backup (formato vecchio) e non usa un
+        // pacchetto, eredita il valore dalla sessione di origine.
+        let legacyPaidSessionIDs = Set(sessions.filter(\.legacyIsPaid).map(\.id))
+        if !legacyPaidSessionIDs.isEmpty {
+            for index in participants.indices where participants[index].isPaidWasMissing
+                && participants[index].packageID == nil
+                && legacyPaidSessionIDs.contains(participants[index].sessionID) {
+                participants[index].isPaid = true
+            }
+        }
     }
 
     public var recordCount: Int {
@@ -455,15 +467,18 @@ public struct BusinessArchive: Codable, Equatable {
         public var notes: String
         public var statusRaw: String
         public var invoiceDate: Date?
-        public var isPaid: Bool
         public var isBlack: Bool
         public var createdAt: Date
         public var updatedAt: Date
+        /// `isPaid` letto da backup precedenti allo schema V16 (dove viveva sulla
+        /// sessione): usato solo in `BusinessArchive.init(from:)` per ereditarlo sui
+        /// partecipanti senza pacchetto, poi ignorato (non esiste più su `TrainingSession`).
+        internal var legacyIsPaid: Bool
         public init(_ value: TrainingSession) {
             id = value.id; startDate = value.startDate; durationMinutes = value.durationMinutes
             serviceID = value.serviceID; serviceName = value.serviceName; location = value.location
             notes = value.notes; statusRaw = value.statusRaw; invoiceDate = value.invoiceDate
-            isPaid = value.isPaid; isBlack = value.isBlack
+            isBlack = value.isBlack; legacyIsPaid = false
             createdAt = value.createdAt; updatedAt = value.updatedAt
         }
         public init(from decoder: Decoder) throws {
@@ -477,15 +492,34 @@ public struct BusinessArchive: Codable, Equatable {
             notes = try c.decode(String.self, forKey: .notes)
             statusRaw = try c.decode(String.self, forKey: .statusRaw)
             invoiceDate = try c.decodeIfPresent(Date.self, forKey: .invoiceDate)
-            isPaid = try c.decodeIfPresent(Bool.self, forKey: .isPaid) ?? false
+            legacyIsPaid = try c.decodeIfPresent(Bool.self, forKey: .legacyIsPaid) ?? false
             isBlack = try c.decodeIfPresent(Bool.self, forKey: .isBlack) ?? false
             createdAt = try c.decode(Date.self, forKey: .createdAt)
             updatedAt = try c.decode(Date.self, forKey: .updatedAt)
         }
+        // `isPaid` restava nella chiave "isPaid" nei backup vecchi: la mappiamo qui su
+        // `legacyIsPaid` per continuare a leggerla senza scriverla più negli export nuovi.
+        private enum CodingKeys: String, CodingKey {
+            case id, startDate, durationMinutes, serviceID, serviceName, location, notes,
+                 statusRaw, invoiceDate, isBlack, createdAt, updatedAt
+            case legacyIsPaid = "isPaid"
+        }
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id); try c.encode(startDate, forKey: .startDate)
+            try c.encode(durationMinutes, forKey: .durationMinutes)
+            try c.encodeIfPresent(serviceID, forKey: .serviceID)
+            try c.encode(serviceName, forKey: .serviceName); try c.encode(location, forKey: .location)
+            try c.encode(notes, forKey: .notes); try c.encode(statusRaw, forKey: .statusRaw)
+            try c.encodeIfPresent(invoiceDate, forKey: .invoiceDate)
+            try c.encode(isBlack, forKey: .isBlack)
+            try c.encode(createdAt, forKey: .createdAt); try c.encode(updatedAt, forKey: .updatedAt)
+            // Non scriviamo più isPaid: il nuovo formato lo porta su ParticipantRecord.
+        }
         internal func model() -> TrainingSession {
             let value = TrainingSession(id: id, startDate: startDate, durationMinutes: durationMinutes,
                 serviceID: serviceID, serviceName: serviceName, location: location, notes: notes,
-                invoiceDate: invoiceDate, isPaid: isPaid, isBlack: isBlack,
+                invoiceDate: invoiceDate, isBlack: isBlack,
                 createdAt: createdAt, updatedAt: updatedAt)
             value.statusRaw = statusRaw
             return value
@@ -499,10 +533,15 @@ public struct BusinessArchive: Codable, Equatable {
         public var priceCents: Int64
         public var packageID: UUID?
         public var paymentMethodRaw: String
+        public var isPaid: Bool
+        /// True se il backup di origine non aveva `isPaid` sul partecipante (formato
+        /// pre-V16): usato solo in `BusinessArchive.init(from:)` per decidere se ereditare
+        /// il valore dalla sessione. Non viene mai serializzato.
+        internal var isPaidWasMissing = false
         public init(_ value: SessionParticipant) {
             id = value.id; sessionID = value.sessionID; clientID = value.clientID
             clientName = value.clientName; priceCents = value.priceCents; packageID = value.packageID
-            paymentMethodRaw = value.paymentMethodRaw
+            paymentMethodRaw = value.paymentMethodRaw; isPaid = value.isPaid
         }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -513,11 +552,35 @@ public struct BusinessArchive: Codable, Equatable {
             priceCents = try c.decode(Int64.self, forKey: .priceCents)
             packageID = try c.decodeIfPresent(UUID.self, forKey: .packageID)
             paymentMethodRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethodRaw) ?? "cash"
+            if let value = try c.decodeIfPresent(Bool.self, forKey: .isPaid) {
+                isPaid = value
+            } else {
+                isPaid = false
+                isPaidWasMissing = true
+            }
+        }
+        private enum CodingKeys: String, CodingKey {
+            case id, sessionID, clientID, clientName, priceCents, packageID, paymentMethodRaw, isPaid
+        }
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id); try c.encode(sessionID, forKey: .sessionID)
+            try c.encode(clientID, forKey: .clientID); try c.encode(clientName, forKey: .clientName)
+            try c.encode(priceCents, forKey: .priceCents)
+            try c.encodeIfPresent(packageID, forKey: .packageID)
+            try c.encode(paymentMethodRaw, forKey: .paymentMethodRaw)
+            try c.encode(isPaid, forKey: .isPaid)
+        }
+        public static func == (lhs: ParticipantRecord, rhs: ParticipantRecord) -> Bool {
+            lhs.id == rhs.id && lhs.sessionID == rhs.sessionID && lhs.clientID == rhs.clientID
+                && lhs.clientName == rhs.clientName && lhs.priceCents == rhs.priceCents
+                && lhs.packageID == rhs.packageID && lhs.paymentMethodRaw == rhs.paymentMethodRaw
+                && lhs.isPaid == rhs.isPaid
         }
         internal func model() -> SessionParticipant {
             SessionParticipant(id: id, sessionID: sessionID, clientID: clientID,
                 clientName: clientName, priceCents: priceCents, packageID: packageID,
-                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash)
+                paymentMethod: PaymentMethod(rawValue: paymentMethodRaw) ?? .cash, isPaid: isPaid)
         }
     }
     public struct PackageRecord: Codable, Equatable {

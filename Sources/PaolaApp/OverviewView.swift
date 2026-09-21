@@ -47,14 +47,14 @@ struct OverviewView: View {
                 clientName: client.clientName,
                 unpaid: BusinessReports.unpaidCompletedSessions(
                     clientID: client.clientID, sessions: sessions, participants: participants),
-                onConfirm: { ids in settleSessions(ids) }
+                onConfirm: { ids in settleSessions(ids, clientID: client.clientID) }
             )
         }
         .businessError($operation)
     }
 
-    private func settleSessions(_ ids: [UUID]) {
-        do { try BusinessRepository(context: context).setSessionsPaid(ids, true) }
+    private func settleSessions(_ ids: [UUID], clientID: UUID) {
+        do { try BusinessRepository(context: context).setSessionsPaid(ids, clientID: clientID, true) }
         catch { operation.capture(error) }
     }
 

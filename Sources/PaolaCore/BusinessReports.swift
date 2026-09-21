@@ -242,7 +242,8 @@ public enum BusinessReports {
 
     /// Contatori del cliente:
     /// - `completedCount`: appuntamenti completati (in cui il cliente partecipa).
-    /// - `unpaidCount`: appuntamenti completati e non pagati (`isPaid == false`).
+    /// - `unpaidCount`: appuntamenti completati con almeno una quota del cliente non
+    ///   pagata (`isPaid == false` sul partecipante senza pacchetto).
     /// - `totalValueCents`: somma delle quote del cliente di TUTTI i suoi appuntamenti
     ///   (ogni stato, deduplicati per partecipante) PIÙ i prezzi di tutti i suoi pacchetti.
     public static func clientTotals(clientID: UUID, sessions: [TrainingSession],
@@ -252,7 +253,12 @@ public enum BusinessReports {
         let clientSessions = sessions.filter { clientSessionIDs.contains($0.id) }
         let completed = clientSessions.filter { $0.status == .completed }
         let completedCount = completed.count
-        let unpaidCount = completed.filter { !$0.isPaid }.count
+        // Non pagato: il cliente ha, in quella sessione, almeno un partecipante senza
+        // pacchetto con isPaid == false (il flag ora vive sul partecipante, non sulla sessione).
+        let unpaidCount = completed.filter { session in
+            participants.contains { $0.sessionID == session.id && $0.clientID == clientID
+                && $0.packageID == nil && !$0.isPaid }
+        }.count
 
         // Quote del cliente su tutti gli appuntamenti (dedup per partecipante).
         var seen = Set<UUID>()
@@ -270,29 +276,34 @@ public enum BusinessReports {
     }
 
     /// Importo "da incassare" di un appuntamento per un cliente: il prezzo concordato
-    /// dei partecipanti senza pacchetto (le lezioni coperte da pacchetto non hanno
-    /// importo da incassare). Somma se il cliente compare più volte (deduplicato).
+    /// dei soli partecipanti senza pacchetto e NON pagati (le lezioni coperte da
+    /// pacchetto, o già pagate, non hanno importo da incassare). Somma se il cliente
+    /// compare più volte (deduplicato).
     private static func sessionDueCents(sessionID: UUID, clientID: UUID,
                                         participants: [SessionParticipant]) -> Int64 {
         var seen = Set<UUID>()
         return participants
-            .filter { $0.sessionID == sessionID && $0.clientID == clientID && $0.packageID == nil }
+            .filter { $0.sessionID == sessionID && $0.clientID == clientID
+                && $0.packageID == nil && !$0.isPaid }
             .filter { seen.insert($0.id).inserted }
             .reduce(Int64(0)) { saturatedAdd($0, max(0, $1.priceCents)) }
     }
 
-    /// Appuntamenti completati e contrassegnati come NON pagati (`isPaid == false`) di
-    /// un cliente, con l'importo da incassare di ciascuno. Il "pagato" è il flag manuale
-    /// dell'appuntamento, non un calcolo dai movimenti. Ordinati per data.
+    /// Appuntamenti completati con almeno una quota NON pagata (`isPaid == false` sul
+    /// partecipante senza pacchetto) di un cliente, con l'importo da incassare di
+    /// ciascuno. Il "pagato" è il flag manuale del partecipante, non un calcolo dai
+    /// movimenti. Ordinati per data.
     public static func unpaidCompletedSessions(clientID: UUID, sessions: [TrainingSession],
                                                participants: [SessionParticipant]) -> [UnpaidSession] {
-        let clientSessionIDs = Set(participants.filter { $0.clientID == clientID }.map(\.sessionID))
+        let clientSessionIDs = Set(participants
+            .filter { $0.clientID == clientID && $0.packageID == nil && !$0.isPaid }
+            .map(\.sessionID))
         var result: [UnpaidSession] = []
         for session in sessions
-        where session.status == .completed && !session.isPaid && clientSessionIDs.contains(session.id) {
+        where session.status == .completed && clientSessionIDs.contains(session.id) {
             let due = sessionDueCents(sessionID: session.id, clientID: clientID, participants: participants)
             // Escludi le lezioni senza importo da incassare (interamente coperte da
-            // pacchetto o a prezzo zero): non sono un debito del cliente.
+            // pacchetto, già pagate o a prezzo zero): non sono un debito del cliente.
             guard due > 0 else { continue }
             let name = participants.first { $0.sessionID == session.id && $0.clientID == clientID }?.clientName ?? ""
             result.append(UnpaidSession(sessionID: session.id, clientID: clientID,
@@ -302,12 +313,14 @@ public enum BusinessReports {
         return result.sorted { $0.date < $1.date }
     }
 
-    /// Clienti con appuntamenti completati non pagati (`isPaid == false`) e importo
-    /// totale da incassare, ordinati per importo decrescente. Utile per la panoramica.
+    /// Clienti con appuntamenti completati con quote non pagate e importo totale da
+    /// incassare, ordinati per importo decrescente. Utile per la panoramica.
     public static func unpaidCompletedByClient(sessions: [TrainingSession],
                                                participants: [SessionParticipant]) -> [UnpaidClientSummary] {
-        let completedUnpaidIDs = Set(sessions.filter { $0.status == .completed && !$0.isPaid }.map(\.id))
-        let clientIDs = Set(participants.filter { completedUnpaidIDs.contains($0.sessionID) }.map(\.clientID))
+        let completedIDs = Set(sessions.filter { $0.status == .completed }.map(\.id))
+        let clientIDs = Set(participants
+            .filter { completedIDs.contains($0.sessionID) && $0.packageID == nil && !$0.isPaid }
+            .map(\.clientID))
         var summaries: [UnpaidClientSummary] = []
         for clientID in clientIDs {
             let unpaid = unpaidCompletedSessions(clientID: clientID, sessions: sessions, participants: participants)

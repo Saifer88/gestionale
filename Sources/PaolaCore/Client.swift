@@ -56,7 +56,7 @@ public enum PaolaSchemaMigrationPlan: SchemaMigrationPlan {
         [PaolaSchemaV1.self, PaolaSchemaV2.self, PaolaSchemaV3.self, PaolaSchemaV4.self,
          PaolaSchemaV5.self, PaolaSchemaV6.self, PaolaSchemaV7.self, PaolaSchemaV8.self,
          PaolaSchemaV9.self, PaolaSchemaV10.self, PaolaSchemaV11.self, PaolaSchemaV12.self,
-         PaolaSchemaV13.self, PaolaSchemaV14.self, PaolaSchemaV15.self]
+         PaolaSchemaV13.self, PaolaSchemaV14.self, PaolaSchemaV15.self, PaolaSchemaV16.self]
     }
     public static var stages: [MigrationStage] {
         [
@@ -73,7 +73,38 @@ public enum PaolaSchemaMigrationPlan: SchemaMigrationPlan {
             .lightweight(fromVersion: PaolaSchemaV11.self, toVersion: PaolaSchemaV12.self),
             .lightweight(fromVersion: PaolaSchemaV12.self, toVersion: PaolaSchemaV13.self),
             .lightweight(fromVersion: PaolaSchemaV13.self, toVersion: PaolaSchemaV14.self),
-            .lightweight(fromVersion: PaolaSchemaV14.self, toVersion: PaolaSchemaV15.self)
+            .lightweight(fromVersion: PaolaSchemaV14.self, toVersion: PaolaSchemaV15.self),
+            .custom(
+                fromVersion: PaolaSchemaV15.self, toVersion: PaolaSchemaV16.self,
+                willMigrate: { context in
+                    // Prima della migrazione lo schema è ancora V15: leggiamo l'isPaid
+                    // storico di ogni appuntamento e lo teniamo pronto per ereditarlo sui
+                    // partecipanti dopo il cambio di schema (in willMigrate lo schema
+                    // corrente è ancora V15, i partecipanti non hanno isPaid).
+                    let sessions = try context.fetch(FetchDescriptor<PaolaSchemaV15.TrainingSession>())
+                    let paidSessionIDs = Set(sessions.filter(\.isPaid).map(\.id))
+                    UserDefaults.standard.set(paidSessionIDs.map(\.uuidString),
+                                              forKey: migrationPaidSessionIDsKey)
+                },
+                didMigrate: { context in
+                    // Dopo la migrazione lo schema è V16: eredita isPaid sui partecipanti
+                    // che non usano un pacchetto, per ogni appuntamento segnato pagato.
+                    defer { UserDefaults.standard.removeObject(forKey: migrationPaidSessionIDsKey) }
+                    let ids = UserDefaults.standard.stringArray(forKey: migrationPaidSessionIDsKey) ?? []
+                    let paidSessionIDs = Set(ids.compactMap(UUID.init(uuidString:)))
+                    guard !paidSessionIDs.isEmpty else { return }
+                    let participants = try context.fetch(FetchDescriptor<SessionParticipant>())
+                    for participant in participants
+                    where participant.packageID == nil && paidSessionIDs.contains(participant.sessionID) {
+                        participant.isPaid = true
+                    }
+                    try context.save()
+                }
+            )
         ]
     }
+
+    /// Chiave temporanea in UserDefaults per portare l'elenco degli appuntamenti pagati
+    /// da `willMigrate` a `didMigrate` (i due blocchi non condividono altrimenti stato).
+    private static let migrationPaidSessionIDsKey = "migration.v15Tov16.paidSessionIDs"
 }

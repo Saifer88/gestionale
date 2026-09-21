@@ -97,9 +97,6 @@ public enum PackageKind: String, CaseIterable, Identifiable, Codable, Sendable {
     /// Data scelta per la fatturazione della lezione (schema V8). Opzionale: nil finché
     /// non viene emessa/prevista una fattura. Lo stato della fattura vive sull'entità Invoice.
     public var invoiceDate: Date?
-    /// Contrassegno manuale "pagato" dell'appuntamento (schema V9). Indipendente dai
-    /// movimenti economici e dalla fatturazione: è un promemoria per il trainer.
-    public var isPaid: Bool = false
     /// Ripartizione contabile "bianco/nero" (schema V10): false = bianco, true = nero.
     /// Valore iniziale dal metodo di pagamento (contanti/PayPal = nero), poi commutabile.
     public var isBlack: Bool = false
@@ -115,12 +112,12 @@ public enum PackageKind: String, CaseIterable, Identifiable, Codable, Sendable {
     public init(id: UUID = UUID(), startDate: Date = Date(), durationMinutes: Int = 60,
                 serviceID: UUID? = nil, serviceName: String = "", location: String = "",
                 notes: String = "", status: SessionStatus = .planned,
-                invoiceDate: Date? = nil, isPaid: Bool = false, isBlack: Bool = false,
+                invoiceDate: Date? = nil, isBlack: Bool = false,
                 createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id; self.startDate = startDate; self.durationMinutes = durationMinutes
         self.serviceID = serviceID; self.serviceName = serviceName; self.location = location
         self.notes = notes; self.statusRaw = status.rawValue; self.invoiceDate = invoiceDate
-        self.isPaid = isPaid; self.isBlack = isBlack
+        self.isBlack = isBlack
         self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }
@@ -133,6 +130,11 @@ public enum PackageKind: String, CaseIterable, Identifiable, Codable, Sendable {
     public var priceCents: Int64 = 0
     public var packageID: UUID?
     public var paymentMethodRaw: String = "cash"
+    /// Contrassegno manuale "pagato" del singolo partecipante (schema V16, spostato da
+    /// `TrainingSession`). Indipendente dai movimenti economici e dalla fatturazione: è
+    /// un promemoria per il trainer. Senza significato per i partecipanti con
+    /// `packageID != nil` (il pagamento è gestito dal pacchetto, non c'è incasso diretto).
+    public var isPaid: Bool = false
 
     public var paymentMethod: PaymentMethod {
         get { PaymentMethod(rawValue: paymentMethodRaw) ?? .cash }
@@ -141,10 +143,11 @@ public enum PackageKind: String, CaseIterable, Identifiable, Codable, Sendable {
 
     public init(id: UUID = UUID(), sessionID: UUID = UUID(), clientID: UUID = UUID(),
                 clientName: String = "", priceCents: Int64 = 0, packageID: UUID? = nil,
-                paymentMethod: PaymentMethod = .cash) {
+                paymentMethod: PaymentMethod = .cash, isPaid: Bool = false) {
         self.id = id; self.sessionID = sessionID; self.clientID = clientID
         self.clientName = clientName; self.priceCents = priceCents; self.packageID = packageID
         self.paymentMethodRaw = paymentMethod.rawValue
+        self.isPaid = isPaid
     }
 }
 

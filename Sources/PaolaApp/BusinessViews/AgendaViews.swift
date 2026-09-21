@@ -223,13 +223,13 @@ struct AgendaView: View {
             LabeledContent {
                 Text(Money.format(totals.white)).font(.subheadline).monospacedDigit()
             } label: {
-                Label("Bianco", systemImage: "circle.fill").font(.subheadline)
+                Label("Bianco", systemImage: "circle").font(.subheadline)
             }
             .accessibilityIdentifier("agenda.periodWhite")
             LabeledContent {
                 Text(Money.format(totals.black)).font(.subheadline).monospacedDigit()
             } label: {
-                Label("Nero", systemImage: "circle").font(.subheadline)
+                Label("Nero", systemImage: "circle.fill").font(.subheadline)
             }
             .accessibilityIdentifier("agenda.periodBlack")
             percentageBar(totals)
@@ -323,7 +323,8 @@ struct AgendaView: View {
             NavigationLink(value: AppRoute.session(session.id)) {
                 CalendarSessionRow(
                     session: session, participants: participants, clients: clients,
-                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty
+                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty,
+                    onTogglePaid: { participant in togglePaid(participant) }
                 )
             }
             .accessibilityIdentifier("agenda.appointment.\(session.id.uuidString)")
@@ -351,8 +352,6 @@ struct AgendaView: View {
                     .accessibilityLabel("Conferma appuntamento provvisorio")
                     .accessibilityIdentifier("session.confirmProvisional")
                 }
-                if participants.filter({$0.sessionID == session.id}).count != 1  || participants.filter({$0.sessionID == session.id})[0].packageID == nil{
-                    paidToggle(for: session) }
                 Spacer(minLength: 0)
                 // Icona pacchetto ancorata in basso a destra del badge (stessa posizione
                 // dell'icona corso), quando almeno un partecipante usa un pacchetto.
@@ -370,6 +369,8 @@ struct AgendaView: View {
     private func usesAnyPackage(_ session: TrainingSession) -> Bool {
         participants.contains { $0.sessionID == session.id && $0.packageID != nil }
     }
+
+
 
     /// Card di un'occorrenza di corso in agenda: badge con icona dedicata, titolo,
     /// orario e partecipanti visibili (pacchetto a tempo ancora valido a quella data).
@@ -435,24 +436,6 @@ struct AgendaView: View {
         .accessibilityIdentifier("session.accountingDot")
     }
 
-    /// Interruttore "pagato" a icona: attiva/disattiva il contrassegno di pagamento
-    /// dell'appuntamento, senza aprire altre schermate e senza toccare i movimenti.
-    @ViewBuilder private func paidToggle(for session: TrainingSession) -> some View {
-        Button {
-            togglePaid(session)
-        } label: {
-            Image(systemName: session.isPaid ? "eurosign.circle.fill" : "eurosign.circle")
-                .font(.callout)
-                .foregroundStyle(session.isPaid ? Color.green : Color.secondary)
-                .padding(4)
-                .background((session.isPaid ? Color.green : Color.secondary).opacity(0.15), in: Circle())
-        }
-        .buttonStyle(.borderless)
-        .help(session.isPaid ? "Segnato come pagato. Tocca per annullare." : "Segna come pagato.")
-        .accessibilityLabel(session.isPaid ? "Pagato" : "Non pagato")
-        .accessibilityIdentifier("session.paidToggle")
-    }
-
     /// Maniglia di ancoraggio per il trascinamento di un appuntamento. È l'unico
     /// elemento trascinabile della riga: prendendola si sposta l'appuntamento nel
     /// calendario, mentre il resto della card resta dedicato all'apertura del dettaglio.
@@ -480,9 +463,9 @@ struct AgendaView: View {
         catch { operation.capture(error) }
     }
 
-    /// Attiva/disattiva il contrassegno "pagato" dell'appuntamento.
-    private func togglePaid(_ session: TrainingSession) {
-        do { try BusinessRepository(context: context).setSessionPaid(session.id, !session.isPaid) }
+    /// Attiva/disattiva il contrassegno "pagato" del partecipante.
+    private func togglePaid(_ participant: SessionParticipant) {
+        do { try BusinessRepository(context: context).setParticipantPaid(participant.id, !participant.isPaid) }
         catch { operation.capture(error) }
     }
 
