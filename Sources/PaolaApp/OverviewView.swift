@@ -18,6 +18,7 @@ struct OverviewView: View {
     @State private var creatingSession = false
     @State private var creatingPackage = false
     @State private var payingClient: UnpaidClientSummary?
+    @State private var conversionInput = ""
     @State private var operation = BusinessOperation()
 
     private var readError: Error? {
@@ -109,10 +110,86 @@ struct OverviewView: View {
         }
     }
 
+    // MARK: - Conversioni
+
+    /// Importi lordi fissi (centesimi): 600, 450, 60, 40 €.
+    private let conversionGrossRows: [Int64] = [60000, 45000, 6000, 4000]
+
+    /// Tabella "Conversioni": per ogni lordo, incremento del netto per metodo d'incasso
+    /// (contanti=nero, bianco, carta, Stripe). Mostrata per prima ed evidenziata.
+    private var conversionsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Conversioni").font(.title3.weight(.semibold))
+            VStack(spacing: 0) {
+                conversionRow(label: "Lordo", values: ["Contanti", "Bianco", "Carta", "Stripe"], isHeader: true)
+                Divider()
+                ForEach(Array(conversionGrossRows.enumerated()), id: \.offset) { _, gross in
+                    conversionValueRow(grossCents: gross)
+                    Divider()
+                }
+                conversionInputRow
+            }
+            .padding(12)
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.accentColor.opacity(0.35), lineWidth: 1))
+        }
+        .accessibilityIdentifier("overview.conversions.table")
+    }
+
+    private func conversionRow(label: String, values: [String], isHeader: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(isHeader ? .caption.weight(.semibold) : .body.monospacedDigit())
+                .frame(maxWidth: .infinity, alignment: .leading)
+            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                Text(value)
+                    .font(isHeader ? .caption.weight(.semibold) : .body.monospacedDigit())
+                    .foregroundStyle(isHeader ? Color.secondary : Color.primary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func conversionValueRow(grossCents: Int64) -> some View {
+        conversionRow(
+            label: Money.format(grossCents),
+            values: [
+                Money.format(ConversionRates.cash(grossCents)),
+                Money.format(ConversionRates.white(grossCents)),
+                Money.format(ConversionRates.card(grossCents)),
+                Money.format(ConversionRates.stripe(grossCents))
+            ],
+            isHeader: false
+        )
+    }
+
+    private var conversionInputRow: some View {
+        let gross = (try? Money.parse(conversionInput)) ?? 0
+        let hasValue = !conversionInput.trimmingCharacters(in: .whitespaces).isEmpty && gross > 0
+        return HStack(spacing: 8) {
+            TextField("Inserisci", text: $conversionInput)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("overview.conversions.input")
+            Group {
+                Text(hasValue ? Money.format(ConversionRates.cash(gross)) : "—")
+                Text(hasValue ? Money.format(ConversionRates.white(gross)) : "—")
+                Text(hasValue ? Money.format(ConversionRates.card(gross)) : "—")
+                Text(hasValue ? Money.format(ConversionRates.stripe(gross)) : "—")
+            }
+            .font(.body.monospacedDigit())
+            .foregroundStyle(hasValue ? Color.primary : Color.secondary)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.vertical, 4)
+    }
+
     // MARK: - Colonna sinistra: contatori compatti
 
     private func metricsColumn(_ summary: OverviewSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            conversionsCard
             sectionTitle("Spese attività")
             // Incassi, Spese ed EBIT affiancati, con la stessa altezza.
             HStack(alignment: .top, spacing: 12) {
