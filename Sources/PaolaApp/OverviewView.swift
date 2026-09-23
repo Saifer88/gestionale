@@ -189,37 +189,53 @@ struct OverviewView: View {
 
     private func metricsColumn(_ summary: OverviewSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            conversionsCard
-            sectionTitle("Spese attività")
-            // Incassi, Spese ed EBIT affiancati, con la stessa altezza.
+            // Spese attività a sinistra, tabella Conversioni affiancata a destra.
             HStack(alignment: .top, spacing: 12) {
-                metricGroup("Incassi", symbol: "arrow.down.circle.fill", tint: .green, rows: [
-                    ("Settimana", Money.format(summary.income.weeklyCents), "overview.income.week"),
-                    ("Mese", Money.format(summary.income.monthlyCents), "overview.income.month"),
-                    ("Anno", Money.format(summary.income.annualCents), "overview.income.year"),
-                    ("Futuri previsti", Money.format(summary.forecastCents), "overview.income.future")
-                ])
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                metricGroup("Spese", symbol: "arrow.up.circle.fill", tint: .orange, rows: [
-                    ("Settimana", Money.format(summary.income.weeklyExpensesCents), "overview.expenses.week"),
-                    ("Mese", Money.format(summary.income.monthlyExpensesCents), "overview.expenses.month"),
-                    ("Anno", Money.format(summary.income.annualExpensesCents), "overview.expenses.year"),
-                    ("Futuri previsti", Money.format(summary.income.futureExpensesCents), "overview.expenses.future")
-                ])
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                metricGroup("EBIT", symbol: "chart.line.uptrend.xyaxis", tint: .blue, rows: [
-                    ("Mese", Money.format(summary.income.monthlyEbitCents), "overview.ebit.month"),
-                    ("Anno", Money.format(summary.income.annualEbitCents), "overview.ebit.year")
-                ])
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                VStack(alignment: .leading, spacing: 12) {
+                    sectionTitle("Spese attività")
+                    // Incassi, Spese ed EBIT affiancati, con la stessa altezza.
+                    HStack(alignment: .top, spacing: 12) {
+                        metricGroup("Incassi", symbol: "arrow.down.circle.fill", tint: .green, rows: [
+                            ("Settimana", Money.format(summary.income.weeklyCents), "overview.income.week"),
+                            ("Mese", Money.format(summary.income.monthlyCents), "overview.income.month"),
+                            ("Anno", Money.format(summary.income.annualCents), "overview.income.year"),
+                            ("Futuri previsti", Money.format(summary.forecastCents), "overview.income.future")
+                        ])
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        metricGroup("Spese", symbol: "arrow.up.circle.fill", tint: .orange, rows: [
+                            ("Settimana", Money.format(summary.income.weeklyExpensesCents), "overview.expenses.week"),
+                            ("Mese", Money.format(summary.income.monthlyExpensesCents), "overview.expenses.month"),
+                            ("Anno", Money.format(summary.income.annualExpensesCents), "overview.expenses.year"),
+                            ("Futuri previsti", Money.format(summary.income.futureExpensesCents), "overview.expenses.future")
+                        ])
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                       /* metricGroup("EBIT", symbol: "chart.line.uptrend.xyaxis", tint: .blue, rows: [
+                            ("Mese", Money.format(summary.income.monthlyEbitCents), "overview.ebit.month"),
+                            ("Anno", Money.format(summary.income.annualEbitCents), "overview.ebit.year")
+                        ])
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)*/
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                conversionsCard
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+
+            // Netto affiancato a Bilancio personale.
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionTitle("Netto")
+                    netGroup(summary)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionTitle("Spese personali")
+                    personalBalanceGroup(summary)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .fixedSize(horizontal: false, vertical: true)
-            // Netto a tutta larghezza.
-            netGroup(summary)
-
-            // Spese personali: bilancio personale = Netto − spese personali.
-            sectionTitle("Spese personali")
-            personalBalanceGroup(summary)
             unpaidGroup(summary.unpaidByClient)
 
         }
@@ -254,9 +270,6 @@ struct OverviewView: View {
         ]
         return GroupBox {
             VStack(alignment: .leading, spacing: 8) {
-                Label("Netto", systemImage: "building.columns.fill")
-                    .font(.headline).foregroundStyle(.purple)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 netRow(label: "", minor: minorColumns.map(\.0), net: "Netto", isHeader: true)
                 netRow(label: "Mese",
                        minor: minorColumns.map { euroLabel(summary.income.monthlyTax[keyPath: $0.1]) },
