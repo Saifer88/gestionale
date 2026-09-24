@@ -170,8 +170,6 @@ struct SessionEditor: View {
                 .disabled(readOnly)
             } header: {
                 Text("Scegli il partecipante")
-            } footer: {
-                Text("Il servizio e la tariffa preferiti della scheda cliente hanno precedenza. In assenza di preferenze si riprendono le ultime scelte; orario e pacchetto restano quelli usati di recente.")
             }
             if clientID == nil {
                 Text("Seleziona un cliente per continuare.")
