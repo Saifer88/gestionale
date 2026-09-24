@@ -37,6 +37,95 @@ public struct TaxBreakdown: Equatable {
         self.blackCents = blackCents; self.whiteCents = whiteCents
         self.inpsCents = inpsCents; self.taxCents = taxCents; self.netCents = netCents
     }
+
+    // MARK: - Spiegazioni (tooltip su hover): operazioni una per riga.
+
+    /// Base imponibile del bianco dopo la rimozione del 4% (centesimi).
+    public var whiteBaseCents: Int64 {
+        var input = Decimal(whiteCents) * Decimal(string: "0.96")!
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &input, 0, .plain)
+        return NSDecimalNumber(decimal: rounded).int64Value
+    }
+    /// Imponibile INPS (base × 0,78), centesimi.
+    private var imponibileCents: Int64 {
+        var input = Decimal(whiteCents) * Decimal(string: "0.96")! * Decimal(string: "0.78")!
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &input, 0, .plain)
+        return NSDecimalNumber(decimal: rounded).int64Value
+    }
+
+    // Ogni riga tooltip ha 3 colonne separate da "\t": operatore, descrizione, formula/valore.
+    // Una riga con operatore "=" è il totale (mostrato in grassetto).
+
+    /// Intestazione INPS: operazioni con formule generiche.
+    public static var inpsFormula: String {
+        [
+            "\tBianchi\t",
+            "-\trivalsa INPS\tBianchi × 4%",
+            "×\tcoefficiente redditività\t(Bianchi − Rivalsa Inps) × 78%",
+            "×\tinps\t(Bianchi − Rivalsa Inps) × Coeff. redditività × 26,07%"
+        ].joined(separator: "\n")
+    }
+    /// Intestazione Imposte.
+    public static var taxFormula: String {
+        [
+            "\tBianchi\t",
+            "-\trivalsa INPS\tBianchi × 4%",
+            "×\tcoefficiente redditività\t(Bianchi − Rivalsa Inps) × 78%",
+            "-\tinps\t(Bianchi − Rivalsa Inps) × Coeff. redditività × 26,07%",
+            "×\timposte\t(imponibile − Inps) × 5%"
+        ].joined(separator: "\n")
+    }
+    /// Intestazione Netto.
+    public static var netFormula: String {
+        [
+            "\tNeri\t",
+            "+\tBianchi\t",
+            "-\trivalsa INPS\tBianchi × 4%",
+            "-\tinps\t",
+            "-\timposte\t",
+            "-\tspese\t"
+        ].joined(separator: "\n")
+    }
+
+    /// Passaggi reali per la cella INPS. Totale in grassetto (operatore "=").
+    public var inpsSteps: String {
+        let rivalsa = whiteCents - whiteBaseCents
+        return [
+            "\tBianchi\t\(Money.format(whiteCents))",
+            "-\trivalsa INPS\t\(Money.format(rivalsa))",
+            "×\tcoefficiente redditività\t\(Money.format(imponibileCents))",
+            "×\tinps\t\(Money.format(inpsCents))",
+            "=\t\t\(Money.format(inpsCents))"
+        ].joined(separator: "\n")
+    }
+    /// Passaggi reali per la cella imposte.
+    public var taxSteps: String {
+        let rivalsa = whiteCents - whiteBaseCents
+        return [
+            "\tBianchi\t\(Money.format(whiteCents))",
+            "-\trivalsa INPS\t\(Money.format(rivalsa))",
+            "×\tcoefficiente redditività\t\(Money.format(imponibileCents))",
+            "-\tinps\t\(Money.format(inpsCents))",
+            "×\timposte\t\(Money.format(taxCents))",
+            "=\t\t\(Money.format(taxCents))"
+        ].joined(separator: "\n")
+    }
+    /// Passaggi reali per la cella netto. Le spese del periodo sono già incluse nel netto.
+    public var netSteps: String {
+        let senzaSpese = blackCents + whiteBaseCents - inpsCents - taxCents
+        let speseCents = senzaSpese - netCents
+        return [
+            "\tNeri\t\(Money.format(blackCents))",
+            "+\tBianchi\t\(Money.format(whiteCents))",
+            "-\trivalsa INPS\t\(Money.format(whiteCents - whiteBaseCents))",
+            "-\tinps\t\(Money.format(inpsCents))",
+            "-\timposte\t\(Money.format(taxCents))",
+            "-\tspese\t\(Money.format(speseCents))",
+            "=\t\t\(Money.format(netCents))"
+        ].joined(separator: "\n")
+    }
 }
 
 /// Riepilogo per cliente delle lezioni completate non pagate.
@@ -513,9 +602,10 @@ public enum BusinessReports {
     /// - Incassi neri/bianchi: pagamenti (al netto dei rimborsi collegati) la cui
     ///   prestazione di origine ha `isBlack` true/false. La prestazione è la sessione
     ///   (sourceKey `income:session:...`) o il pacchetto (sourceKey `income:package:...`).
-    /// - inps = (bianchi × 0,78) × 0,2607
-    /// - imposte = ((bianchi × 0,78) − inps) × 0,05
-    /// - netto = neri + bianchi − (inps + imposte + spese)
+    /// - baseBianchi = bianchi × 0,96 (si rimuove il 4% prima delle tasse)
+    /// - inps = (baseBianchi × 0,78) × 0,2607
+    /// - imposte = ((baseBianchi × 0,78) − inps) × 0,05
+    /// - netto = neri + baseBianchi − (inps + imposte + spese)
     /// `expensesCents` sono le spese del periodo (già calcolate a monte). Gli importi
     /// sono in centesimi; le quote fiscali sono arrotondate al centesimo.
     public static func taxSummary(from: Date, to: Date, entries: [LedgerEntry],
@@ -564,12 +654,15 @@ public enum BusinessReports {
             else { whiteCents = saturatedAdd(whiteCents, netCents) }
         }
 
-        let whiteImponibile = Decimal(whiteCents) * Decimal(string: "0.78")!
+        // Dal bianco si rimuove il 4% prima di calcolare INPS e imposte.
+        let whiteBase = Decimal(whiteCents) * Decimal(string: "0.96")!
+        let whiteBaseCents = roundedCents(whiteBase)
+        let whiteImponibile = whiteBase * Decimal(string: "0.78")!
         let inps = whiteImponibile * Decimal(string: "0.2607")!
         let imposte = (whiteImponibile - inps) * Decimal(string: "0.05")!
         let inpsCents = roundedCents(inps)
         let imposteCents = roundedCents(imposte)
-        let netCents = blackCents + whiteCents - (inpsCents + imposteCents + max(0, expensesCents))
+        let netCents = blackCents + whiteBaseCents - (inpsCents + imposteCents + max(0, expensesCents))
 
         return TaxBreakdown(blackCents: blackCents, whiteCents: whiteCents,
                             inpsCents: inpsCents, taxCents: imposteCents, netCents: netCents)

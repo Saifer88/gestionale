@@ -121,7 +121,7 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Conversioni").font(.title3.weight(.semibold))
             VStack(spacing: 0) {
-                conversionRow(label: "Lordo", values: ["Contanti", "Bianco", "Carta", "Stripe"], isHeader: true)
+                conversionHeaderRow
                 Divider()
                 ForEach(Array(conversionGrossRows.enumerated()), id: \.offset) { _, gross in
                     conversionValueRow(grossCents: gross)
@@ -136,29 +136,44 @@ struct OverviewView: View {
         .accessibilityIdentifier("overview.conversions.table")
     }
 
-    private func conversionRow(label: String, values: [String], isHeader: Bool) -> some View {
+    /// Cella conversione: testo + tooltip (operazioni) opzionale.
+    private struct ConvCell { let text: String; let help: String? }
+
+    private func conversionRow(label: String, values: [ConvCell], isHeader: Bool) -> some View {
         HStack(spacing: 8) {
             Text(label)
                 .font(isHeader ? .caption.weight(.semibold) : .body.monospacedDigit())
                 .frame(maxWidth: .infinity, alignment: .leading)
-            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-                Text(value)
+            ForEach(Array(values.enumerated()), id: \.offset) { _, cell in
+                Text(cell.text)
                     .font(isHeader ? .caption.weight(.semibold) : .body.monospacedDigit())
                     .foregroundStyle(isHeader ? Color.secondary : Color.primary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
+                    .contentShape(Rectangle())
+                    .modifier(HoverTooltip(text: cell.help))
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// Intestazione conversioni: Contanti senza formula; Bianco/Carta/Stripe con formule.
+    private var conversionHeaderRow: some View {
+        conversionRow(label: "Lordo", values: [
+            ConvCell(text: "Contanti", help: nil),
+            ConvCell(text: "Bianco", help: ConversionRates.whiteFormula),
+            ConvCell(text: "Carta", help: ConversionRates.cardFormula),
+            ConvCell(text: "Stripe", help: ConversionRates.stripeFormula)
+        ], isHeader: true)
     }
 
     private func conversionValueRow(grossCents: Int64) -> some View {
         conversionRow(
             label: Money.format(grossCents),
             values: [
-                Money.format(ConversionRates.cash(grossCents)),
-                Money.format(ConversionRates.white(grossCents)),
-                Money.format(ConversionRates.card(grossCents)),
-                Money.format(ConversionRates.stripe(grossCents))
+                ConvCell(text: Money.format(ConversionRates.cash(grossCents)), help: nil),
+                ConvCell(text: Money.format(ConversionRates.white(grossCents)), help: ConversionRates.whiteSteps(grossCents)),
+                ConvCell(text: Money.format(ConversionRates.card(grossCents)), help: ConversionRates.cardSteps(grossCents)),
+                ConvCell(text: Money.format(ConversionRates.stripe(grossCents)), help: ConversionRates.stripeSteps(grossCents))
             ],
             isHeader: false
         )
@@ -172,17 +187,25 @@ struct OverviewView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("overview.conversions.input")
-            Group {
-                Text(hasValue ? Money.format(ConversionRates.cash(gross)) : "—")
-                Text(hasValue ? Money.format(ConversionRates.white(gross)) : "—")
-                Text(hasValue ? Money.format(ConversionRates.card(gross)) : "—")
-                Text(hasValue ? Money.format(ConversionRates.stripe(gross)) : "—")
-            }
-            .font(.body.monospacedDigit())
-            .foregroundStyle(hasValue ? Color.primary : Color.secondary)
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            cell(hasValue ? Money.format(ConversionRates.cash(gross)) : "—", help: nil, active: hasValue)
+            cell(hasValue ? Money.format(ConversionRates.white(gross)) : "—",
+                 help: hasValue ? ConversionRates.whiteSteps(gross) : nil, active: hasValue)
+            cell(hasValue ? Money.format(ConversionRates.card(gross)) : "—",
+                 help: hasValue ? ConversionRates.cardSteps(gross) : nil, active: hasValue)
+            cell(hasValue ? Money.format(ConversionRates.stripe(gross)) : "—",
+                 help: hasValue ? ConversionRates.stripeSteps(gross) : nil, active: hasValue)
         }
         .padding(.vertical, 4)
+    }
+
+    /// Cella valore della riga di input.
+    private func cell(_ text: String, help: String?, active: Bool) -> some View {
+        Text(text)
+            .font(.body.monospacedDigit())
+            .foregroundStyle(active ? Color.primary : Color.secondary)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .contentShape(Rectangle())
+            .modifier(HoverTooltip(text: help))
     }
 
     // MARK: - Colonna sinistra: contatori compatti
@@ -268,16 +291,20 @@ struct OverviewView: View {
             ("Neri", \.blackCents), ("Bianchi", \.whiteCents),
             ("INPS", \.inpsCents), ("Imposte", \.taxCents)
         ]
+        // Tooltip di intestazione (formule generiche) per Neri/Bianchi/INPS/Imposte.
+        let headerHelp: [String?] = [nil, nil, TaxBreakdown.inpsFormula, TaxBreakdown.taxFormula]
         return GroupBox {
             VStack(alignment: .leading, spacing: 8) {
-                netRow(label: "", minor: minorColumns.map(\.0), net: "Netto", isHeader: true)
-                netRow(label: "Mese",
-                       minor: minorColumns.map { euroLabel(summary.income.monthlyTax[keyPath: $0.1]) },
-                       net: Money.format(summary.income.monthlyTax.netCents))
+                netRow(label: "", minor: minorColumns.map { NetCell(text: $0.0, help: nil) },
+                       net: NetCell(text: "Netto", help: nil), isHeader: true,
+                       headerHelp: headerHelp, netHeaderHelp: TaxBreakdown.netFormula)
+                netRow(label: "Mese", minor: netCells(summary.income.monthlyTax, minorColumns),
+                       net: NetCell(text: Money.format(summary.income.monthlyTax.netCents),
+                                    help: summary.income.monthlyTax.netSteps))
                     .accessibilityIdentifier("overview.net.month")
-                netRow(label: "Anno",
-                       minor: minorColumns.map { euroLabel(summary.income.annualTax[keyPath: $0.1]) },
-                       net: Money.format(summary.income.annualTax.netCents))
+                netRow(label: "Anno", minor: netCells(summary.income.annualTax, minorColumns),
+                       net: NetCell(text: Money.format(summary.income.annualTax.netCents),
+                                    help: summary.income.annualTax.netSteps))
                     .accessibilityIdentifier("overview.net.year")
             }
             .padding(.vertical, 6)
@@ -286,28 +313,53 @@ struct OverviewView: View {
         .accessibilityIdentifier("overview.net")
     }
 
+    /// Cella della tabella Netto: testo mostrato e tooltip (operazioni) opzionale.
+    private struct NetCell { let text: String; let help: String? }
+
+    /// Celle valore di una riga (Mese/Anno) con i tooltip delle operazioni reali su
+    /// INPS e Imposte (Neri/Bianchi non hanno operazioni: sono somme dirette).
+    private func netCells(_ tax: TaxBreakdown,
+                          _ columns: [(String, KeyPath<TaxBreakdown, Int64>)]) -> [NetCell] {
+        columns.map { title, keyPath in
+            let help: String?
+            switch title {
+            case "INPS": help = tax.inpsSteps
+            case "Imposte": help = tax.taxSteps
+            default: help = nil
+            }
+            return NetCell(text: euroLabel(tax[keyPath: keyPath]), help: help)
+        }
+    }
+
     /// Una riga della tabella Netto: etichetta + colonne minori strette + colonna Netto
     /// grande (evidenziata). La colonna Netto usa un font maggiore, come i contatori.
-    private func netRow(label: String, minor: [String], net: String, isHeader: Bool = false) -> some View {
+    /// I tooltip (operazioni in colonna) compaiono al passaggio del mouse.
+    private func netRow(label: String, minor: [NetCell], net: NetCell, isHeader: Bool = false,
+                        headerHelp: [String?] = [], netHeaderHelp: String? = nil) -> some View {
         HStack(spacing: 6) {
             Text(label)
                 .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                 .frame(width: 34, alignment: .leading)
-            ForEach(Array(minor.enumerated()), id: \.offset) { _, value in
-                Text(value)
+            ForEach(Array(minor.enumerated()), id: \.offset) { index, cell in
+                let tip = isHeader ? (index < headerHelp.count ? headerHelp[index] : nil) : cell.help
+                Text(cell.text)
                     .font(isHeader ? .caption2.weight(.semibold) : .caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .lineLimit(1).minimumScaleFactor(0.5)
                     .frame(maxWidth: .infinity, alignment: .trailing)
+                    .contentShape(Rectangle())
+                    .modifier(HoverTooltip(text: tip))
             }
             // Colonna Netto: larga e in risalto.
-            Text(net)
+            Text(net.text)
                 .font(isHeader ? .subheadline.weight(.semibold) : .title3.weight(.semibold))
                 .foregroundStyle(isHeader ? Color.secondary : Color.purple)
                 .monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.5)
                 .frame(width: 150, alignment: .trailing)
+                .contentShape(Rectangle())
+                .modifier(HoverTooltip(text: isHeader ? netHeaderHelp : net.help))
         }
     }
 
@@ -587,6 +639,47 @@ struct OverviewView: View {
             .accessibilityIdentifier("overview.newPackage")
     }
 
+}
+
+/// Mostra un tooltip (operazioni in colonna) al passaggio del mouse tramite `popover`,
+/// più affidabile di `.help` dentro liste/gruppi. Le righe sono separate da "\n".
+private struct HoverTooltip: ViewModifier {
+    let text: String?
+    @State private var hovering = false
+    func body(content: Content) -> some View {
+        if let text, !text.isEmpty {
+            content
+                .onHover { hovering = $0 }
+                .popover(isPresented: $hovering, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
+                            // Ogni riga: "operatore\tdescrizione\tvalore". Operatore e
+                            // descrizione a sinistra, valore/formula a destra. Riga con
+                            // operatore "=" è il totale (in grassetto).
+                            let cols = line.components(separatedBy: "\t")
+                            let op = cols.count > 0 ? cols[0] : ""
+                            let desc = cols.count > 1 ? cols[1] : ""
+                            let value = cols.count > 2 ? cols[2] : ""
+                            let isTotal = op == "="
+                            HStack(spacing: 8) {
+                                Text(op)
+                                    .font(.caption.monospacedDigit())
+                                    .frame(width: 14, alignment: .leading)
+                                Text(desc)
+                                    .font(isTotal ? .caption.weight(.bold) : .caption)
+                                Spacer(minLength: 16)
+                                Text(value)
+                                    .font(isTotal ? .caption.weight(.bold).monospacedDigit() : .caption.monospacedDigit())
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .frame(minWidth: 220)
+                }
+        } else {
+            content
+        }
+    }
 }
 
 /// Conferma per saldare in blocco le lezioni completate non pagate di un cliente.
