@@ -43,36 +43,39 @@ enum AgendaScheduling {
                          courseOccurrences: [CourseOccurrence] = [],
                          calendar: Calendar = SchedulingSuggestions.calendar) -> [AgendaHourRow] {
         let startOfDay = calendar.startOfDay(for: day)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)
+            ?? BusinessDates.exclusiveEnd(day)
+        let daySessions = sessions.filter {
+            $0.status != .cancelled && $0.status != .noShow
+                && $0.startDate < endOfDay && $0.endDate > startOfDay
+        }
+        let sessionsByHour = Dictionary(grouping: daySessions.filter {
+            calendar.isDate($0.startDate, inSameDayAs: day)
+        }) { calendar.component(.hour, from: $0.startDate) }
+        let dayBlocks = blocks.filter { $0.startDate < endOfDay && $0.endDate > startOfDay }
+        let dayCourses = courseOccurrences.filter { $0.start < endOfDay && $0.end > startOfDay }
+        let coursesByHour = Dictionary(grouping: dayCourses.filter {
+            calendar.isDate($0.start, inSameDayAs: day)
+        }) { calendar.component(.hour, from: $0.start) }
         return gridHours.compactMap { hour in
             guard let start = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: startOfDay,
                                             matchingPolicy: .strict, repeatedTimePolicy: .first),
                   calendar.isDate(start, inSameDayAs: day),
                   calendar.component(.hour, from: start) == hour else { return nil }
-            let hourSessions = sessions.filter {
-                $0.status != .cancelled && $0.status != .noShow
-                    && calendar.isDate($0.startDate, inSameDayAs: day)
-                    && calendar.component(.hour, from: $0.startDate) == hour
-            }.sorted {
+            let hourSessions = (sessionsByHour[hour] ?? []).sorted {
                 $0.startDate == $1.startDate ? $0.id.uuidString < $1.id.uuidString : $0.startDate < $1.startDate
             }
-            let hourCourses = courseOccurrences.filter {
-                calendar.isDate($0.start, inSameDayAs: day)
-                    && calendar.component(.hour, from: $0.start) == hour
-            }.sorted { $0.start < $1.start }
+            let hourCourses = (coursesByHour[hour] ?? []).sorted { $0.start < $1.start }
             let duration = draggedDurationMinutes
             let end = start.addingTimeInterval(Double(duration) * 60)
-            let occupant = draggedSessionID == nil ? nil : sessions.first {
-                $0.id != draggedSessionID && $0.status != .cancelled && $0.status != .noShow
-                    && calendar.isDate($0.startDate, inSameDayAs: day)
-                    && calendar.component(.hour, from: $0.startDate) == hour
-            }
+            let occupant = draggedSessionID == nil ? nil : hourSessions.first { $0.id != draggedSessionID }
             // La fascia è libera se non c'è un altro appuntamento, né un'indisponibilità,
             // né un'occorrenza di corso che la copre (i corsi bloccano come le indisponibilità).
-            let free = !sessions.contains {
-                $0.id != draggedSessionID && $0.status != .cancelled && $0.status != .noShow
+            let free = !daySessions.contains {
+                $0.id != draggedSessionID
                     && $0.startDate < end && $0.endDate > start
-            } && !blocks.contains { $0.startDate < end && $0.endDate > start }
-              && !courseOccurrences.contains { $0.start < end && $0.end > start }
+            } && !dayBlocks.contains { $0.startDate < end && $0.endDate > start }
+              && !dayCourses.contains { $0.start < end && $0.end > start }
             return AgendaHourRow(start: start, hour: hour, sessions: hourSessions,
                                  courses: hourCourses, occupantID: occupant?.id, isFree: free)
         }

@@ -1,6 +1,7 @@
 import PaolaCore
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Editor di una singola versione della scheda anamnesi (dato riservato). Le versioni
 /// precedenti restano nello storico; salvando si aggiorna o si aggiunge questa versione.
@@ -14,6 +15,10 @@ struct AnamnesisEditor: View {
     @State private var version: Anamnesis
     @State private var formError: FormError?
     @State private var confirmingDelete = false
+    @State private var importingAttachment = false
+    @State private var exportingAttachment = false
+    @State private var attachmentDocument: AnamnesisAttachmentDocument?
+    @State private var attachmentFilename = ""
 
     /// True se la versione è già presente nello storico (quindi eliminabile). Una versione
     /// appena creata e non ancora salvata non compare finché non si salva.
@@ -36,6 +41,35 @@ struct AnamnesisEditor: View {
                 }
                 ForEach(Anamnesis.Field.allCases, id: \.self) { field in
                     fieldEditor(field)
+                }
+                Section("Allegati") {
+                    Button("Aggiungi file", systemImage: "paperclip") {
+                        importingAttachment = true
+                    }
+                    ForEach(version.attachments) { attachment in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(attachment.fileName)
+                                Text(ByteCountFormatter.string(fromByteCount: Int64(attachment.data.count), countStyle: .file))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                attachmentDocument = AnamnesisAttachmentDocument(data: attachment.data)
+                                attachmentFilename = attachment.fileName
+                                exportingAttachment = true
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                            .accessibilityLabel("Esporta \(attachment.fileName)")
+                            Button(role: .destructive) {
+                                version.removeAttachment(attachment.id)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .accessibilityLabel("Rimuovi \(attachment.fileName)")
+                        }
+                    }
                 }
                 if !version.legacyNote.isEmpty {
                     Section("Nota precedente (testo libero)") {
@@ -93,6 +127,34 @@ struct AnamnesisEditor: View {
             }
         }
         .frame(minWidth: 520, minHeight: 640)
+        .fileImporter(isPresented: $importingAttachment, allowedContentTypes: [.data],
+                      allowsMultipleSelection: true, onCompletion: importAttachments)
+        .fileExporter(isPresented: $exportingAttachment, document: attachmentDocument,
+                      contentType: .data, defaultFilename: attachmentFilename) { result in
+            if case .failure(let error) = result { formError = FormError(error) }
+        }
+    }
+
+    private func importAttachments(_ result: Result<[URL], Error>) {
+        do {
+            for url in try result.get() {
+                version.addAttachment(try loadAttachment(from: url))
+            }
+        } catch {
+            formError = FormError(error)
+        }
+    }
+
+    private func loadAttachment(from url: URL) throws -> AnamnesisAttachment {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        let maximumSize = 25 * 1024 * 1024
+        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard size <= maximumSize else { throw AnamnesisAttachmentError.fileTooLarge }
+        let data = try Data(contentsOf: url)
+        guard data.count <= maximumSize else { throw AnamnesisAttachmentError.fileTooLarge }
+        let contentType = UTType(filenameExtension: url.pathExtension)?.identifier ?? UTType.data.identifier
+        return AnamnesisAttachment(fileName: url.lastPathComponent, contentType: contentType, data: data)
     }
 
     @ViewBuilder
@@ -167,4 +229,27 @@ struct AnamnesisEditor: View {
             formError = FormError(error)
         }
     }
+}
+
+private struct AnamnesisAttachmentDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.data] }
+    let data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.data = data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
+private enum AnamnesisAttachmentError: LocalizedError {
+    case fileTooLarge
+    var errorDescription: String? { "Il file supera il limite di 25 MB." }
 }

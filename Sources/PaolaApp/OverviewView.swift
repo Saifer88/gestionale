@@ -4,6 +4,7 @@ import SwiftData
 import SwiftUI
 
 struct OverviewView: View {
+    @AppStorage("overview.generalNotes") private var generalNotes = ""
     @Query private var clients: [Client]
     @Query private var entries: [LedgerEntry]
     @Query private var sessions: [TrainingSession]
@@ -93,20 +94,21 @@ struct OverviewView: View {
         let spacing: CGFloat = 20
         // Larghezza del contenuto: larghezza disponibile meno il padding orizzontale.
         let available = width - 48
-        if available < 620 {
-            VStack(alignment: .leading, spacing: spacing) {
+        VStack(alignment: .leading, spacing: spacing) {
+            if available < 620 {
                 metricsColumn(summary)
                 upcomingColumn(summary)
+            } else {
+                let upcomingWidth = available / 3
+                HStack(alignment: .top, spacing: spacing) {
+                    metricsColumn(summary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    upcomingColumn(summary)
+                        .frame(width: upcomingWidth, alignment: .leading)
+                }
             }
-        } else {
-            let fraction: CGFloat = 1.0 / 3.0
-            let upcomingWidth = available * fraction
-            HStack(alignment: .top, spacing: spacing) {
-                metricsColumn(summary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                upcomingColumn(summary)
-                    .frame(width: upcomingWidth, alignment: .leading)
-            }
+            unpaidGroup(summary.unpaidByClient)
+            generalNotesEditor
         }
     }
 
@@ -259,8 +261,6 @@ struct OverviewView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .fixedSize(horizontal: false, vertical: true)
-            unpaidGroup(summary.unpaidByClient)
-
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("overview.metrics")
@@ -407,6 +407,18 @@ struct OverviewView: View {
         }
         .backgroundStyle(Color.red.opacity(0.08))
         .accessibilityIdentifier("overview.unpaid")
+    }
+
+    private var generalNotesEditor: some View {
+        GroupBox {
+            TextEditor(text: $generalNotes)
+                .frame(minHeight: 150)
+                .accessibilityIdentifier("overview.generalNotes.editor")
+        } label: {
+            Label("Note", systemImage: "note.text")
+                .font(.headline)
+        }
+        .accessibilityIdentifier("overview.generalNotes")
     }
 
     private func metricGroup(_ title: String, symbol: String, tint: Color,

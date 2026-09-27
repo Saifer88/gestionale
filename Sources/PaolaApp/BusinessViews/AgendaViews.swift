@@ -39,7 +39,7 @@ struct AgendaView: View {
                             end: BusinessDates.exclusiveEnd(selectedDate))
     }
     private var visibleSessions: [TrainingSession] {
-        let matchingPeople = Set(participants.filter {
+        let matchingPeople = search.isEmpty ? Set<UUID>() : Set(participants.filter {
             $0.clientName.localizedStandardContains(search)
         }.map(\.sessionID))
         return CalendarAppointments.visible(sessions, in: interval).filter {
@@ -275,10 +275,11 @@ struct AgendaView: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .topLeading)
                             Divider()
-                            ForEach(hourRows(on: day)) { row in
-                                hourCell(row, compact: true)
+                            LazyVStack(alignment: .leading, spacing: 8) {
+                                ForEach(hourRows(on: day)) { row in
+                                    hourCell(row, compact: true)
+                                }
                             }
-                            Spacer(minLength: 8)
                         }
                         .padding(12)
                         .frame(width: width, alignment: .topLeading)

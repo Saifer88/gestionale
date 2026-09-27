@@ -1,5 +1,19 @@
 import Foundation
 
+public struct AnamnesisAttachment: Codable, Equatable, Identifiable {
+    public let id: UUID
+    public let fileName: String
+    public let contentType: String
+    public let data: Data
+
+    public init(id: UUID = UUID(), fileName: String, contentType: String, data: Data) {
+        self.id = id
+        self.fileName = fileName
+        self.contentType = contentType
+        self.data = data
+    }
+}
+
 /// Scheda anamnesi del cliente (dato riservato). È salvata come JSON dentro il campo
 /// testuale `Client.anamnesis`, quindi non richiede modifiche allo schema SwiftData né
 /// migrazioni: aggiungere o togliere un campo qui non tocca il database.
@@ -111,13 +125,15 @@ public struct Anamnesis: Equatable, Identifiable {
     public var title: String
     /// Tutte le voci salvate (chiavi previste + eventuali chiavi sconosciute preservate).
     public private(set) var values: [String: String]
+    public private(set) var attachments: [AnamnesisAttachment]
 
     public init(id: UUID = UUID(), date: Date = Date(), title: String = "",
-                values: [String: String] = [:]) {
+                values: [String: String] = [:], attachments: [AnamnesisAttachment] = []) {
         self.id = id
         self.date = date
         self.title = title
         self.values = values
+        self.attachments = attachments
     }
 
     // MARK: - Accesso ai campi
@@ -129,6 +145,14 @@ public struct Anamnesis: Equatable, Identifiable {
         let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { values[field.rawValue] = nil }
         else { values[field.rawValue] = trimmed }
+    }
+
+    public mutating func addAttachment(_ attachment: AnamnesisAttachment) {
+        attachments.append(attachment)
+    }
+
+    public mutating func removeAttachment(_ id: UUID) {
+        attachments.removeAll { $0.id == id }
     }
 
     public var legacyNote: String { values[Anamnesis.legacyNoteKey] ?? "" }
@@ -151,11 +175,35 @@ public struct Anamnesis: Equatable, Identifiable {
         var date: Date
         var title: String
         var values: [String: String]
+        var attachments: [AnamnesisAttachment]
+
+        private enum CodingKeys: String, CodingKey { case id, date, title, values, attachments }
+
+        init(id: UUID, date: Date, title: String, values: [String: String],
+             attachments: [AnamnesisAttachment]) {
+            self.id = id
+            self.date = date
+            self.title = title
+            self.values = values
+            self.attachments = attachments
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(UUID.self, forKey: .id)
+            date = try container.decode(Date.self, forKey: .date)
+            title = try container.decode(String.self, forKey: .title)
+            values = try container.decode([String: String].self, forKey: .values)
+            attachments = try container.decodeIfPresent([AnamnesisAttachment].self, forKey: .attachments) ?? []
+        }
     }
 
-    fileprivate var payload: Payload { Payload(id: id, date: date, title: title, values: values) }
+    fileprivate var payload: Payload {
+        Payload(id: id, date: date, title: title, values: values, attachments: attachments)
+    }
     fileprivate init(payload: Payload) {
-        self.init(id: payload.id, date: payload.date, title: payload.title, values: payload.values)
+        self.init(id: payload.id, date: payload.date, title: payload.title,
+                  values: payload.values, attachments: payload.attachments)
     }
 }
 
@@ -215,7 +263,7 @@ public struct AnamnesisHistory: Equatable {
 
     /// Serializza in JSON (array di versioni) per il campo `Client.anamnesis`. Vuoto → "".
     public func serialized() -> String {
-        let nonEmpty = versions.filter { !$0.values.isEmpty }
+        let nonEmpty = versions.filter { !$0.values.isEmpty || !$0.attachments.isEmpty }
         guard !nonEmpty.isEmpty else { return "" }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
