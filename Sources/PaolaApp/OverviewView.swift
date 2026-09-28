@@ -107,8 +107,10 @@ struct OverviewView: View {
                         .frame(width: upcomingWidth, alignment: .leading)
                 }
             }
-            unpaidGroup(summary.unpaidByClient)
-            generalNotesEditor
+            HStack(alignment: .top, spacing: spacing) {
+                unpaidGroup(summary.unpaidByClient)
+                generalNotesEditor
+            }
         }
     }
 
@@ -250,7 +252,7 @@ struct OverviewView: View {
             // Netto affiancato a Bilancio personale.
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    sectionTitle("Netto")
+                    sectionTitle("Utile Netto Reale")
                     netGroup(summary)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
