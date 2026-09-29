@@ -15,16 +15,58 @@ private enum AgendaPeriod: String, CaseIterable, Identifiable {
 }
 
 struct AgendaView: View {
+    @State private var period: AgendaPeriod = .week
+    @State private var selectedDate = Date()
+
+    var body: some View {
+        AgendaContent(period: $period, selectedDate: $selectedDate)
+    }
+}
+
+/// Indici dell'agenda calcolati una sola volta per render, invece di rifiltrare
+/// tutti gli appuntamenti e partecipanti per ogni giorno, fascia e riga.
+private struct AgendaSnapshot {
+    let visibleSessions: [TrainingSession]
+    let participantsBySession: [UUID: [SessionParticipant]]
+    let clientsByID: [UUID: Client]
+    let conflictIDs: Set<UUID>
+    let courseOccurrences: [CourseOccurrence]
+
+    func people(of session: TrainingSession) -> [SessionParticipant] {
+        participantsBySession[session.id] ?? []
+    }
+
+    /// Appuntamenti programmati/completati che si sovrappongono ad almeno un altro.
+    static func conflicts(in sessions: [TrainingSession]) -> Set<UUID> {
+        let active = sessions.filter { $0.status == .planned || $0.status == .completed }
+            .sorted { $0.startDate < $1.startDate }
+        var result = Set<UUID>()
+        for (index, session) in active.enumerated() {
+            let end = session.endDate
+            var next = index + 1
+            while next < active.count, active[next].startDate < end {
+                if active[next].id != session.id {
+                    result.insert(session.id)
+                    result.insert(active[next].id)
+                }
+                next += 1
+            }
+        }
+        return result
+    }
+}
+
+private struct AgendaContent: View {
     @Environment(\.modelContext) private var context
-    @Query(sort: \TrainingSession.startDate) private var sessions: [TrainingSession]
+    @Binding private var period: AgendaPeriod
+    @Binding private var selectedDate: Date
+    @Query private var sessions: [TrainingSession]
     @Query private var participants: [SessionParticipant]
     @Query private var clients: [Client]
     @Query private var blocks: [Unavailability]
     @Query private var packages: [LessonPackage]
     @Query private var courses: [Course]
     @Query private var courseParticipants: [CourseParticipant]
-    @State private var period: AgendaPeriod = .week
-    @State private var selectedDate = Date()
     @State private var status: SessionStatus?
     @State private var search = ""
     @State private var creatingSession = false
@@ -33,20 +75,44 @@ struct AgendaView: View {
     /// Fascia oraria scelta per creare un appuntamento da una casella del calendario.
     @State private var creationSlot: AgendaCreationSlot?
 
-    private var interval: DateInterval {
-        SchedulingSuggestions.calendar.dateInterval(of: period.component, for: selectedDate)
-            ?? DateInterval(start: SchedulingSuggestions.calendar.startOfDay(for: selectedDate),
-                            end: BusinessDates.exclusiveEnd(selectedDate))
+    init(period: Binding<AgendaPeriod>, selectedDate: Binding<Date>) {
+        _period = period
+        _selectedDate = selectedDate
+        let interval = Self.interval(period: period.wrappedValue, date: selectedDate.wrappedValue)
+        // Durata massima 24 h: il margine include le lezioni che sconfinano nel periodo
+        // e quelle con cui possono sovrapporsi.
+        let lower = interval.start.addingTimeInterval(-3 * 86_400)
+        let upper = interval.end
+        _sessions = Query(filter: #Predicate<TrainingSession> { $0.startDate >= lower && $0.startDate < upper },
+                          sort: \TrainingSession.startDate)
     }
-    private var visibleSessions: [TrainingSession] {
-        let matchingPeople = search.isEmpty ? Set<UUID>() : Set(participants.filter {
-            $0.clientName.localizedStandardContains(search)
-        }.map(\.sessionID))
-        return CalendarAppointments.visible(sessions, in: interval).filter {
-            (status == nil || $0.status == status)
-                && (search.isEmpty || $0.serviceName.localizedStandardContains(search) || matchingPeople.contains($0.id))
+
+    private static func interval(period: AgendaPeriod, date: Date) -> DateInterval {
+        SchedulingSuggestions.calendar.dateInterval(of: period.component, for: date)
+            ?? DateInterval(start: SchedulingSuggestions.calendar.startOfDay(for: date),
+                            end: BusinessDates.exclusiveEnd(date))
+    }
+
+    private var interval: DateInterval { Self.interval(period: period, date: selectedDate) }
+
+    private func makeSnapshot() -> AgendaSnapshot {
+        let interval = interval
+        let participantsBySession = Dictionary(grouping: participants, by: \.sessionID)
+        let visible = CalendarAppointments.visible(sessions, in: interval).filter { session in
+            guard status == nil || session.status == status else { return false }
+            guard !search.isEmpty else { return true }
+            return session.serviceName.localizedStandardContains(search)
+                || (participantsBySession[session.id] ?? []).contains { $0.clientName.localizedStandardContains(search) }
         }
+        return AgendaSnapshot(
+            visibleSessions: visible,
+            participantsBySession: participantsBySession,
+            clientsByID: Dictionary(clients.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
+            conflictIDs: AgendaSnapshot.conflicts(in: sessions),
+            courseOccurrences: CourseOccurrences.expand(courses: courses, participants: courseParticipants,
+                                                        packages: packages, in: interval))
     }
+
     private var days: [Date] {
         var result: [Date] = []
         var cursor = interval.start
@@ -58,20 +124,20 @@ struct AgendaView: View {
     }
     /// Giorni mostrati nella vista settimana: sabato e domenica compaiono solo se
     /// hanno almeno un appuntamento visibile.
-    private var weekDays: [Date] {
+    private func weekDays(_ snapshot: AgendaSnapshot) -> [Date] {
         let calendar = SchedulingSuggestions.calendar
         return days.filter { day in
             let weekday = calendar.component(.weekday, from: day)
             let isWeekend = (weekday == 7 || weekday == 1) // 7 = sabato, 1 = domenica
-            return !isWeekend || hasSessions(on: day)
+            return !isWeekend || hasSessions(on: day, snapshot)
         }
     }
 
     /// Vero se il giorno ha almeno un appuntamento visibile (usato per mostrare o
     /// nascondere le colonne del weekend nella vista settimana).
-    private func hasSessions(on day: Date) -> Bool {
+    private func hasSessions(on day: Date, _ snapshot: AgendaSnapshot) -> Bool {
         let dayEnd = BusinessDates.exclusiveEnd(day)
-        return visibleSessions.contains {
+        return snapshot.visibleSessions.contains {
             BusinessDates.overlaps(day, dayEnd, $0.startDate, $0.endDate)
         }
     }
@@ -82,7 +148,7 @@ struct AgendaView: View {
                 ?? _courses.fetchError ?? _courseParticipants.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
-                agenda
+                agenda(makeSnapshot())
             }
         }
         .sectionTitle(.agenda)
@@ -106,7 +172,7 @@ struct AgendaView: View {
         .businessError($operation)
     }
 
-    private var agenda: some View {
+    private func agenda(_ snapshot: AgendaSnapshot) -> some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
@@ -117,7 +183,7 @@ struct AgendaView: View {
                     .accessibilityIdentifier("agenda.period")
                     Spacer(minLength: 12)
                     // Riepilogo del periodo in alto a destra: Totale, Bianco, Nero e barra.
-                    totalsSummary
+                    totalsSummary(accountingTotals(snapshot))
                 }
                 HStack {
                     Button { move(-1) } label: { Image(systemName: "chevron.left") }
@@ -133,7 +199,8 @@ struct AgendaView: View {
                     HStack { filters }
                     VStack(alignment: .leading) { filters }
                 }
-                Text("\(visibleSessions.count) appuntamenti · \(scheduledMinutes / 60) h \(scheduledMinutes % 60) min")
+                let minutes = scheduledMinutes(snapshot)
+                Text("\(snapshot.visibleSessions.count) appuntamenti · \(minutes / 60) h \(minutes % 60) min")
                     .font(.caption).foregroundStyle(.secondary)
                 if draggingSessionID != nil {
                     HStack(spacing: 8) {
@@ -154,10 +221,10 @@ struct AgendaView: View {
             .padding()
             Divider()
             if period == .week {
-                weekColumns
+                weekColumns(snapshot)
             } else {
                 List {
-                    ForEach(days, id: \.self) { day in daySection(day) }
+                    ForEach(days, id: \.self) { day in daySection(day, snapshot) }
                 }
             }
         }
@@ -171,8 +238,8 @@ struct AgendaView: View {
         }
     }
 
-    private var scheduledMinutes: Int {
-        visibleSessions.filter { $0.status == .planned || $0.status == .completed }
+    private func scheduledMinutes(_ snapshot: AgendaSnapshot) -> Int {
+        snapshot.visibleSessions.filter { $0.status == .planned || $0.status == .completed }
             .reduce(0) { $0 + $1.durationMinutes }
     }
 
@@ -192,12 +259,10 @@ struct AgendaView: View {
     /// - partecipanti agli appuntamenti visibili, ESCLUSI quelli coperti da un pacchetto
     ///   (già pagati con l'acquisto), attribuiti al colore dell'appuntamento;
     /// - pacchetti acquistati nel periodo, attribuiti al proprio colore.
-    private var accountingTotals: AccountingTotals {
+    private func accountingTotals(_ snapshot: AgendaSnapshot) -> AccountingTotals {
         var totals = AccountingTotals()
-        let byID = Dictionary(uniqueKeysWithValues:
-            visibleSessions.filter { $0.status != .cancelled && $0.status != .noShow }.map { ($0.id, $0) })
-        for participant in participants where participant.packageID == nil {
-            if let session = byID[participant.sessionID] {
+        for session in snapshot.visibleSessions where session.status != .cancelled && session.status != .noShow {
+            for participant in snapshot.people(of: session) where participant.packageID == nil {
                 totals.add(participant.priceCents, black: session.isBlack)
             }
         }
@@ -207,12 +272,9 @@ struct AgendaView: View {
         return totals
     }
 
-    private var totalCents: Int64 { accountingTotals.total }
-
     /// Riepilogo in alto a destra: Totale, Bianco e Nero (stessa dimensione del nome
     /// del giorno) con una barra che mostra le percentuali di bianco/nero sul totale.
-    @ViewBuilder private var totalsSummary: some View {
-        let totals = accountingTotals
+    @ViewBuilder private func totalsSummary(_ totals: AccountingTotals) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
             LabeledContent {
                 Text(Money.format(totals.total)).font(.headline).monospacedDigit()
@@ -258,9 +320,9 @@ struct AgendaView: View {
         .accessibilityIdentifier("agenda.percentageBar")
     }
 
-    private var weekColumns: some View {
+    private func weekColumns(_ snapshot: AgendaSnapshot) -> some View {
         GeometryReader { geometry in
-            let columns = weekDays
+            let columns = weekDays(snapshot)
             let count = max(1, columns.count)
             let width = max(180, (geometry.size.width - 32 - CGFloat(count - 1) * 12) / CGFloat(count))
             ScrollView([.horizontal, .vertical]) {
@@ -276,8 +338,8 @@ struct AgendaView: View {
                             .frame(maxWidth: .infinity, minHeight: 46, alignment: .topLeading)
                             Divider()
                             LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(hourRows(on: day)) { row in
-                                    hourCell(row, compact: true)
+                                ForEach(hourRows(on: day, snapshot)) { row in
+                                    hourCell(row, snapshot)
                                 }
                             }
                         }
@@ -295,16 +357,17 @@ struct AgendaView: View {
         }
     }
 
-    @ViewBuilder private func daySection(_ day: Date) -> some View {
+    @ViewBuilder private func daySection(_ day: Date, _ snapshot: AgendaSnapshot) -> some View {
         Section(BusinessFormatting.day(day)) {
-            ForEach(hourRows(on: day)) { row in
-                hourCell(row, compact: false)
+            ForEach(hourRows(on: day, snapshot)) { row in
+                hourCell(row, snapshot)
                     .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
             }
         }
     }
 
-    @ViewBuilder private func itemRow(_ session: TrainingSession) -> some View {
+    @ViewBuilder private func itemRow(_ session: TrainingSession, _ snapshot: AgendaSnapshot) -> some View {
+        let people = snapshot.people(of: session)
         // Il pulsante di conferma resta FUORI dal NavigationLink: dentro l'etichetta
         // di un NavigationLink un tocco aprirebbe comunque il dettaglio. Così invece
         // conferma direttamente (provvisorio -> programmato) senza altre schermate.
@@ -323,8 +386,9 @@ struct AgendaView: View {
             }
             NavigationLink(value: AppRoute.session(session.id)) {
                 CalendarSessionRow(
-                    session: session, participants: participants, clients: clients,
-                    conflict: !BusinessDates.conflicts(for: session, sessions: sessions, blocks: []).isEmpty,
+                    session: session, participants: people,
+                    clients: people.compactMap { snapshot.clientsByID[$0.clientID] },
+                    conflict: snapshot.conflictIDs.contains(session.id),
                     onTogglePaid: { participant in togglePaid(participant) }
                 )
             }
@@ -333,7 +397,7 @@ struct AgendaView: View {
                 // Il pallino bianco/nero non si mostra se TUTTI i partecipanti usano un
                 // pacchetto: in quel caso il colore contabile è ereditato dal pacchetto.
                 // Con partecipanti misti resta attivo (si applica ai soli paganti diretti).
-                if !allParticipantsUsePackage(session) {
+                if people.isEmpty || people.contains(where: { $0.packageID == nil }) {
                     accountingDot(for: session)
                 }
                 if session.status == .provisional {
@@ -356,7 +420,7 @@ struct AgendaView: View {
                 Spacer(minLength: 0)
                 // Icona pacchetto ancorata in basso a destra del badge (stessa posizione
                 // dell'icona corso), quando almeno un partecipante usa un pacchetto.
-                if usesAnyPackage(session) {
+                if people.contains(where: { $0.packageID != nil }) {
                     Image(systemName: "rectangle.stack.fill")
                         .font(.callout).foregroundStyle(.blue)
                         .help("Lezione con pacchetto in uso")
@@ -365,13 +429,6 @@ struct AgendaView: View {
             }
         }
     }
-
-    /// True se almeno un partecipante della sessione usa un pacchetto.
-    private func usesAnyPackage(_ session: TrainingSession) -> Bool {
-        participants.contains { $0.sessionID == session.id && $0.packageID != nil }
-    }
-
-
 
     /// Card di un'occorrenza di corso in agenda: badge con icona dedicata, titolo,
     /// orario e partecipanti visibili (pacchetto a tempo ancora valido a quella data).
@@ -476,41 +533,28 @@ struct AgendaView: View {
         catch { operation.capture(error) }
     }
 
-    /// True se ci sono partecipanti e TUTTI usano un pacchetto (colore ereditato dal
-    /// pacchetto, quindi il pallino bianco/nero non va mostrato).
-    private func allParticipantsUsePackage(_ session: TrainingSession) -> Bool {
-        let people = participants.filter { $0.sessionID == session.id }
-        return !people.isEmpty && people.allSatisfy { $0.packageID != nil }
-    }
-
     // MARK: - Drag & drop
 
     private func session(_ id: UUID) -> TrainingSession? { sessions.first { $0.id == id } }
 
     /// Righe orarie (7–21) di un giorno per la griglia del calendario. Applica il
     /// filtro stato/ricerca corrente agli appuntamenti mostrati.
-    private func hourRows(on day: Date) -> [AgendaHourRow] {
+    private func hourRows(on day: Date, _ snapshot: AgendaSnapshot) -> [AgendaHourRow] {
         let dragged = draggingSessionID.flatMap { session($0) }
         return AgendaScheduling.hourRows(
             on: day,
             draggedSessionID: draggingSessionID,
             draggedDurationMinutes: dragged?.durationMinutes ?? 60,
-            sessions: visibleSessions,
+            sessions: snapshot.visibleSessions,
             blocks: blocks,
-            courseOccurrences: courseOccurrences)
-    }
-
-    /// Occorrenze di corso (virtuali) che ricadono nell'intervallo visibile in agenda.
-    private var courseOccurrences: [CourseOccurrence] {
-        CourseOccurrences.expand(courses: courses, participants: courseParticipants,
-                                 packages: packages, in: interval)
+            courseOccurrences: snapshot.courseOccurrences)
     }
 
     /// Casella di una fascia oraria: mostra l'orario, gli appuntamenti che iniziano
     /// in quell'ora (trascinabili) e, se vuota, un pulsante "+" per creare un nuovo
     /// appuntamento con data e ora già impostate. Durante il trascinamento diventa
     /// bersaglio di rilascio nella propria posizione oraria.
-    @ViewBuilder private func hourCell(_ row: AgendaHourRow, compact: Bool) -> some View {
+    @ViewBuilder private func hourCell(_ row: AgendaHourRow, _ snapshot: AgendaSnapshot) -> some View {
         let dragging = draggingSessionID != nil
         HStack(alignment: .top, spacing: 10) {
             Text(row.hourLabel)
@@ -523,7 +567,7 @@ struct AgendaView: View {
                     courseCard(occurrence)
                 }
                 ForEach(row.sessions) { session in
-                    itemRow(session)
+                    itemRow(session, snapshot)
                         .buttonStyle(.plain)
                         .padding(10)
                         .background(.background, in: RoundedRectangle(cornerRadius: 10))

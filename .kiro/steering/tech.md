@@ -32,11 +32,15 @@ xcodebuild -version
 ### Test del dominio (Swift Package)
 
 ```bash
-xcrun swift test
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcrun swift test --scratch-path build/test-validation
 ```
 
 I test usano archivi in memoria o cartelle temporanee isolate, mai l'archivio
-dell'app e mai un account iCloud.
+dell'app e mai un account iCloud. Filtrare con `--filter NomeClasseTest`.
+La suite completa (≈230 test) dura circa 30 s. Se il terminale dell'agente non
+restituisce output, lanciarla in background e redirigere su file
+(`> /tmp/paola-tests.txt 2>&1`), poi leggere il riepilogo `Executed N tests`.
 
 > **Non eseguire i test automaticamente dopo aver sviluppato una funzionalità.**
 > La suite è lenta e spesso non si avvia nell'ambiente dell'agente: eseguirla fa
@@ -78,10 +82,17 @@ xcodebuild -project PaolaGestionale.xcodeproj \
   CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test
 ```
 
-Adattare il nome della destinazione al simulatore disponibile. Usare un simulatore
-dedicato senza dati reali.
+Adattare il nome della destinazione al simulatore disponibile
+(`xcrun simctl list devices available`). Usare un simulatore dedicato senza dati reali.
 
 ## Note di sviluppo
+
+- Nel progetto Xcode solo `Sources/PaolaApp/BusinessViews/` e `Protection/` sono cartelle
+  sincronizzate: i file nella radice di `Sources/PaolaApp/` vanno aggiunti a mano in
+  `project.pbxproj`. Oggi mancano ad esempio `AppRoute.swift` e `AutoBackupService.swift`,
+  quindi il build Xcode fallisce mentre SwiftPM compila.
+- Con target macOS 14 / iOS 17 non è disponibile l'API di history di SwiftData
+  (iOS 18+): non basarsi su token di transazione per rilevare modifiche esterne.
 
 - Il target Xcode dell'app si chiama `PaolaGestionaleApp` per evitare ambiguità
   con il prodotto SwiftPM; schema e nome app restano `PaolaGestionale`.

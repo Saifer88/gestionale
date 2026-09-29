@@ -45,7 +45,7 @@ Ogni nuova regola economica, di scheduling o di validazione va qui, con test ass
   anagrafica cliente, bozza di modifica, ricerca e duplicati.
 - `ServiceRate.swift`, `AppointmentPreferences.swift`, `SchedulingSuggestions.swift` —
   listino/tariffe, preferenze e proposte di giorni/orari liberi.
-- `SchemaV2.swift` … `SchemaV5.swift` — schemi SwiftData versionati. Ogni nuovo schema
+- `SchemaV2.swift` … `SchemaV16.swift` — schemi SwiftData versionati (corrente: V16). Ogni nuovo schema
   aggiunge una versione e la relativa migrazione, senza ricreare incassi o inventare dati.
 - `StoreFactory.swift`, `CloudNamespace.swift` — creazione del container e namespace
   per account CloudKit (archivio locale distinto per account).
@@ -74,6 +74,49 @@ Ogni nuova regola economica, di scheduling o di validazione va qui, con test ass
 - Saldi e totali sono **calcolati** dai movimenti, mai modificabili a mano.
 - Ogni record ha un identificativo stabile e metadati per la sincronizzazione;
   evitare vincoli di unicità incompatibili con CloudKit.
+
+## Validazione e performance delle scritture
+
+`BusinessRepository.transact(validation:)` ha due livelli:
+
+- `.archive` (default): `integrityWarnings` + `BusinessArchive.validate` sull'intero
+  archivio prima e dopo la scrittura. Obbligatorio per operazioni che creano, modificano
+  o eliminano movimenti, utilizzi pacchetto, pacchetti, fatture, spese, servizi, corsi,
+  blocchi, e per il completamento di una lezione.
+- `.local`: nessuna validazione globale; l'operazione deve verificare da sé **tutte** le
+  regole di `validate` che può violare. Usato per `isPaid`, `isBlack`, spostamento,
+  creazione/modifica di appuntamenti non completati, cambi di stato diversi da
+  "completato". Esempio: `rescheduleSession` controlla la scadenza dei pacchetti dei
+  partecipanti (`checkExpiry`), che prima intercettava solo la validazione globale.
+- `isPaid` e `isBlack` incidono sui report (`taxSummary`, lezioni non pagate, totali
+  bianco/nero) ma nessuna regola di `validate` li legge.
+
+Regole per non tornare lenti (una scrittura arrivava a >50 s con 3200 lezioni):
+
+- `validate` e `integrityWarnings` devono restare **O(n)**: niente `filter`/`contains`
+  annidati dentro un ciclo sui record; indicizzare prima con `Dictionary(grouping:)`
+  o mappe per id/sourceKey.
+- Leggere una proprietà di un `@Model` è costoso: prima di ordinare, estrarre le chiavi
+  una volta (vedi `canonicalEntries`).
+- Preferire fetch con `#Predicate` a "fetch di tutto + filtro" (`find`, partecipanti per
+  `sessionID`, `checkOverlap` sulla finestra `[start − 24 h, end)`: la durata massima è
+  1440 minuti).
+- Dopo il salvataggio si rileggono nel contesto della UI solo i tipi di entità modificati.
+- Benchmark: `Tests/PaolaCoreTests/WritePerformanceTests.swift` (3200 lezioni; scritture
+  locali < 0,5 s, completamento < 5 s).
+
+## Performance delle viste
+
+- Non introdurre cache persistenti dei dati: SwiftData ha già la sua e una seconda copia
+  diventa obsoleta con la sincronizzazione iCloud.
+- Limitare le `@Query` al periodo mostrato: `AgendaContent` crea la query nell'`init`
+  con l'intervallo visibile (±3 giorni di margine per sconfinamenti e sovrapposizioni).
+- Calcolare indici e dati derivati **una volta per render** (`AgendaSnapshot`: sessioni
+  visibili, partecipanti per sessione, clienti per id, conflitti, corsi) e passarli alle
+  righe. Evitare proprietà calcolate che rifiltrano tutto l'archivio e vengono chiamate
+  per ogni giorno, fascia o riga.
+- Le sovrapposizioni si calcolano con uno sweep sulle sessioni ordinate, non confrontando
+  ogni riga con tutte le sessioni.
 
 ## Testing
 

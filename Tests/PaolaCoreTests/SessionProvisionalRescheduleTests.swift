@@ -167,4 +167,22 @@ final class SessionProvisionalRescheduleTests: XCTestCase {
             }
         }
     }
+
+    func testRescheduleBeyondPackageExpiryIsBlocked() throws {
+        let store = try BusinessTestStore.make()
+        let context = store.mainContext
+        let client = try BusinessTestStore.addClient(context)
+        let repo = BusinessRepository(context: context)
+        var package = BusinessTestStore.package(client)
+        package.expiresOn = BusinessTestStore.date.addingTimeInterval(10 * 86400)
+        let packageID = try repo.savePackage(package)
+        let id = try repo.saveSession(BusinessTestStore.session(client, day: 2, packageID: packageID))
+        let original = try XCTUnwrap(context.fetch(FetchDescriptor<TrainingSession>()).first { $0.id == id }).startDate
+
+        XCTAssertThrowsError(try repo.rescheduleSession(id, to: BusinessTestStore.date.addingTimeInterval(20 * 86400))) {
+            guard case BusinessError.inconsistentData = $0 else { return XCTFail("\($0)") }
+        }
+        let session = try XCTUnwrap(context.fetch(FetchDescriptor<TrainingSession>()).first { $0.id == id })
+        XCTAssertEqual(session.startDate, original)
+    }
 }

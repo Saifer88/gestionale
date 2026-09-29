@@ -241,12 +241,20 @@ public enum BusinessReports {
                 warn("Un movimento non di rettifica contiene un riferimento originale inatteso.")
             }
         }
+        var aliasesBySource: [String: [UUID]] = [:]
+        for entry in entries where !entry.sourceKey.isEmpty {
+            aliasesBySource[entry.sourceKey.lowercased(), default: []].append(entry.id)
+        }
+        var adjustmentsByOriginal: [UUID: Decimal] = [:]
+        for entry in canonical {
+            if let originalID = entry.originalEntryID {
+                adjustmentsByOriginal[originalID, default: 0] += Decimal(entry.amountCents)
+            }
+        }
         for original in canonical where original.kind == .payment || original.kind == .charge {
-            let aliases = Set(entries.filter {
-                $0.id == original.id || (!original.sourceKey.isEmpty && $0.sourceKey.lowercased() == original.sourceKey.lowercased())
-            }.map(\.id))
-            let adjustments = canonical.filter { $0.originalEntryID.map(aliases.contains) == true }
-                .reduce(Decimal(0)) { $0 + Decimal($1.amountCents) }
+            var aliases = Set(original.sourceKey.isEmpty ? [] : aliasesBySource[original.sourceKey.lowercased()] ?? [])
+            aliases.insert(original.id)
+            let adjustments = aliases.reduce(Decimal(0)) { $0 + (adjustmentsByOriginal[$1] ?? 0) }
             if adjustments > Decimal(original.amountCents) {
                 warn("I rimborsi o le note di credito superano l'importo originale.")
             }
@@ -302,10 +310,13 @@ public enum BusinessReports {
                 warn("Un utilizzo fa riferimento a un pacchetto mancante.")
             }
         }
+        var logicalSourcesByPackage: [UUID: Set<String>] = [:]
+        for use in uses {
+            logicalSourcesByPackage[use.packageID, default: []]
+                .insert(BusinessRules.sessionSource(sessionID: use.sessionID, clientID: use.clientID))
+        }
         for package in packages where package.kind != .timed {
-            let count = Set(uses.filter { $0.packageID == package.id }.map {
-                BusinessRules.sessionSource(sessionID: $0.sessionID, clientID: $0.clientID)
-            }).count
+            let count = logicalSourcesByPackage[package.id]?.count ?? 0
             if count > package.capacity {
                 warn("Un pacchetto supera il numero di lezioni disponibili: possibile conflitto di sincronizzazione.")
             }
@@ -564,11 +575,13 @@ public enum BusinessReports {
     internal static func canonicalEntries(_ entries: [LedgerEntry]) -> [LedgerEntry] {
         var ids = Set<UUID>()
         var sources = Set<String>()
-        return entries.sorted {
+        // Reading SwiftData properties is costly: read the sort keys once per entry.
+        let keyed = entries.map { (entry: $0, date: $0.date, createdAt: $0.createdAt, id: $0.id.uuidString) }
+        return keyed.sorted {
             if $0.date != $1.date { return $0.date < $1.date }
             if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
-            return $0.id.uuidString < $1.id.uuidString
-        }.filter {
+            return $0.id < $1.id
+        }.map(\.entry).filter {
             guard ids.insert($0.id).inserted else { return false }
             return $0.sourceKey.isEmpty || sources.insert($0.sourceKey.lowercased()).inserted
         }

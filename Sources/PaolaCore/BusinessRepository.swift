@@ -96,11 +96,18 @@ public final class BusinessRepository {
 
     @discardableResult
     public func saveSession(_ draft: SessionDraft, allowOverlap: Bool = false) throws -> UUID {
-        try transact { writer in
+        // Local checks below cover every archive rule for a non-completed session.
+        try transact(validation: .local) { writer in
             try BusinessRules.date(draft.startDate); try BusinessRules.duration(draft.durationMinutes)
             let endDate = draft.startDate.addingTimeInterval(Double(draft.durationMinutes) * 60)
             try BusinessRules.date(endDate)
-            let previousParticipants = try writer.fetch(FetchDescriptor<SessionParticipant>())
+            let previousParticipants: [SessionParticipant]
+            if let id = draft.id {
+                previousParticipants = try writer.fetch(FetchDescriptor<SessionParticipant>(
+                    predicate: #Predicate { $0.sessionID == id }))
+            } else {
+                previousParticipants = []
+            }
             let session: TrainingSession
             if let id = draft.id {
                 session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
@@ -193,7 +200,7 @@ public final class BusinessRepository {
     }
 
     public func setSessionStatus(_ id: UUID, to status: SessionStatus, completionDate: Date = Date()) throws {
-        try transact { writer in
+        try transact(validation: status == .completed ? .archive : .local) { writer in
             let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
             if session.status == status { return }
             guard session.status != .completed else { throw BusinessError.completedSessionLocked }
@@ -315,7 +322,7 @@ public final class BusinessRepository {
     /// - La sovrapposizione è bloccante solo per gli appuntamenti programmati; per i
     ///   provvisori è ammessa (prenotazione tentativa). Con `allowOverlap` si forza.
     public func rescheduleSession(_ id: UUID, to startDate: Date, allowOverlap: Bool = false) throws {
-        try transact { writer in
+        try transact(validation: .local) { writer in
             let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
             guard session.status != .completed else { throw BusinessError.completedSessionLocked }
             try BusinessRules.date(startDate)
@@ -326,6 +333,13 @@ public final class BusinessRepository {
             if !allowOverlap, session.status == .planned {
                 try checkOverlap(start: startDate, end: end, excludingSession: id, in: writer)
             }
+            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>(
+                predicate: #Predicate { $0.sessionID == id }))
+            for participant in participants {
+                guard let packageID = participant.packageID else { continue }
+                let package = try find(packageID, in: writer, type: LessonPackage.self, name: "Pacchetto")
+                try BusinessArchive().checkExpiry(package.expiresOn, sessionDate: startDate)
+            }
             session.startDate = startDate
             session.updatedAt = Date()
         }
@@ -335,7 +349,7 @@ public final class BusinessRepository {
     /// né modifica movimenti economici: è solo un promemoria per il trainer. Senza
     /// effetto sui partecipanti con pacchetto (il pagamento è gestito dal pacchetto).
     public func setParticipantPaid(_ id: UUID, _ paid: Bool) throws {
-        try transact { writer in
+        try transact(validation: .local) { writer in
             let participant = try find(id, in: writer, type: SessionParticipant.self, name: "Partecipante")
             guard participant.packageID == nil else { return }
             if participant.isPaid == paid { return }
@@ -352,7 +366,7 @@ public final class BusinessRepository {
     /// altri partecipanti eventualmente presenti nelle stesse sessioni.
     public func setSessionsPaid(_ sessionIDs: [UUID], clientID: UUID, _ paid: Bool) throws {
         guard !sessionIDs.isEmpty else { return }
-        try transact { writer in
+        try transact(validation: .local) { writer in
             let now = Date()
             let ids = Set(sessionIDs)
             let participants = try writer.fetch(FetchDescriptor<SessionParticipant>())
@@ -370,7 +384,7 @@ public final class BusinessRepository {
 
     /// Imposta la ripartizione contabile "bianco/nero" (true = nero) di un appuntamento.
     public func setSessionBlack(_ id: UUID, _ black: Bool) throws {
-        try transact { writer in
+        try transact(validation: .local) { writer in
             let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
             if session.isBlack == black { return }
             session.isBlack = black
@@ -380,7 +394,7 @@ public final class BusinessRepository {
 
     /// Imposta la ripartizione contabile "bianco/nero" (true = nero) di un pacchetto.
     public func setPackageBlack(_ id: UUID, _ black: Bool) throws {
-        try transact { writer in
+        try transact(validation: .local) { writer in
             let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
             if package.isBlack == black { return }
             package.isBlack = black
@@ -813,7 +827,10 @@ public final class BusinessRepository {
 
     private func checkOverlap(start: Date, end: Date, excludingSession: UUID? = nil,
                               excludingBlock: UUID? = nil, in writer: ModelContext) throws {
-        let sessions = try writer.fetch(FetchDescriptor<TrainingSession>())
+        // Durations are at most 24 h, so only sessions starting in this window can overlap.
+        let earliest = start.addingTimeInterval(-86_400)
+        let sessions = try writer.fetch(FetchDescriptor<TrainingSession>(
+            predicate: #Predicate { $0.startDate >= earliest && $0.startDate < end }))
         let blocks = try writer.fetch(FetchDescriptor<Unavailability>())
         if sessions.contains(where: {
             $0.id != excludingSession && ($0.status == .planned || $0.status == .completed)
@@ -834,29 +851,44 @@ public final class BusinessRepository {
     }
 
     private func find<T: PersistentModel>(_ id: UUID, in writer: ModelContext, type: T.Type, name: String) throws -> T {
-        let matches = try writer.fetch(FetchDescriptor<T>()).filter { model in
-            switch model {
-            case let value as TrainingService: return value.id == id
-            case let value as TrainingSession: return value.id == id
-            case let value as SessionParticipant: return value.id == id
-            case let value as LessonPackage: return value.id == id
-            case let value as LedgerEntry: return value.id == id
-            case let value as Unavailability: return value.id == id
-            case let value as Invoice: return value.id == id
-            case let value as Expense: return value.id == id
-            case let value as Course: return value.id == id
-            case let value as CourseParticipant: return value.id == id
-            default: return false
-            }
+        func fetch<M: PersistentModel>(_ predicate: Predicate<M>) throws -> [T] {
+            try writer.fetch(FetchDescriptor<M>(predicate: predicate)).compactMap { $0 as? T }
+        }
+        let matches: [T]
+        switch type {
+        case is TrainingService.Type: matches = try fetch(#Predicate<TrainingService> { $0.id == id })
+        case is TrainingSession.Type: matches = try fetch(#Predicate<TrainingSession> { $0.id == id })
+        case is SessionParticipant.Type: matches = try fetch(#Predicate<SessionParticipant> { $0.id == id })
+        case is LessonPackage.Type: matches = try fetch(#Predicate<LessonPackage> { $0.id == id })
+        case is LedgerEntry.Type: matches = try fetch(#Predicate<LedgerEntry> { $0.id == id })
+        case is Unavailability.Type: matches = try fetch(#Predicate<Unavailability> { $0.id == id })
+        case is Invoice.Type: matches = try fetch(#Predicate<Invoice> { $0.id == id })
+        case is Expense.Type: matches = try fetch(#Predicate<Expense> { $0.id == id })
+        case is Course.Type: matches = try fetch(#Predicate<Course> { $0.id == id })
+        case is CourseParticipant.Type: matches = try fetch(#Predicate<CourseParticipant> { $0.id == id })
+        default: matches = []
         }
         guard matches.count == 1, let found = matches.first else { throw BusinessError.notFound(name) }
         return found
     }
 
-    private func transact<T>(_ operation: (ModelContext) throws -> T) throws -> T {
+    private enum Validation {
+        /// Whole-archive consistency check before and after the write (economic operations).
+        case archive
+        /// The operation's own checks are enough: it touches no ledger, use or package record.
+        case local
+    }
+
+    private func transact<T>(validation: Validation = .archive, _ operation: (ModelContext) throws -> T) throws -> T {
         // Keep failed saves and SwiftData rollback invalidation away from observed UI instances.
         let writer = ModelContext(context.container)
         writer.autosaveEnabled = false
+        guard validation == .archive else {
+            let result = try operation(writer)
+            guard writer.hasChanges else { return result }
+            try save(writer)
+            return result
+        }
         let clients = try writer.fetch(FetchDescriptor<Client>())
         let clientIDs = Set(clients.map(\.id))
         guard clientIDs.count == clients.count else { throw BusinessError.inconsistentData("Clienti duplicati.") }
@@ -867,24 +899,34 @@ public final class BusinessRepository {
         guard warnings.isEmpty else {
             throw BusinessError.inconsistentData("Operazione sospesa per dati incoerenti. " + warnings.joined(separator: " "))
         }
-        try BusinessArchive.capture(context: writer).validate(clientIDs: clientIDs)
+        try BusinessArchive.uncanonicalizedCapture(context: writer).validate(clientIDs: clientIDs)
         let result = try operation(writer)
         guard writer.hasChanges else { return result }
-        try BusinessArchive.capture(context: writer).validate(clientIDs: clientIDs)
+        try BusinessArchive.uncanonicalizedCapture(context: writer).validate(clientIDs: clientIDs)
+        try save(writer)
+        return result
+    }
+
+    private func save(_ writer: ModelContext) throws {
+        let touched = Set((writer.insertedModelsArray + writer.changedModelsArray + writer.deletedModelsArray)
+            .map { ObjectIdentifier(type(of: $0)) })
         try saveChanges(writer)
+        // Only entity types changed by this write need to be refreshed in the UI context.
+        func refresh<T: PersistentModel>(_ type: T.Type) throws {
+            if touched.contains(ObjectIdentifier(type)) { _ = try context.fetch(FetchDescriptor<T>()) }
+        }
         do {
-            _ = try context.fetch(FetchDescriptor<TrainingService>())
-            _ = try context.fetch(FetchDescriptor<ServiceRate>())
-            _ = try context.fetch(FetchDescriptor<ClientAppointmentPreference>())
-            _ = try context.fetch(FetchDescriptor<TrainingSession>())
-            _ = try context.fetch(FetchDescriptor<SessionParticipant>())
-            _ = try context.fetch(FetchDescriptor<LessonPackage>())
-            _ = try context.fetch(FetchDescriptor<PackageUse>())
-            _ = try context.fetch(FetchDescriptor<LedgerEntry>())
-            _ = try context.fetch(FetchDescriptor<Unavailability>())
+            try refresh(TrainingService.self)
+            try refresh(ServiceRate.self)
+            try refresh(ClientAppointmentPreference.self)
+            try refresh(TrainingSession.self)
+            try refresh(SessionParticipant.self)
+            try refresh(LessonPackage.self)
+            try refresh(PackageUse.self)
+            try refresh(LedgerEntry.self)
+            try refresh(Unavailability.self)
         } catch {
             throw ClientPersistenceError.refreshAfterSaveFailed(error)
         }
-        return result
     }
 }

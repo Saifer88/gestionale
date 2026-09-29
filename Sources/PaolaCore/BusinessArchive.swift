@@ -78,6 +78,12 @@ public struct BusinessArchive: Codable, Equatable {
 
     @MainActor
     public static func capture(context: ModelContext) throws -> BusinessArchive {
+        try uncanonicalizedCapture(context: context).canonicalized()
+    }
+
+    /// Validation does not depend on record order, so writes skip the sort.
+    @MainActor
+    internal static func uncanonicalizedCapture(context: ModelContext) throws -> BusinessArchive {
         var archive = BusinessArchive()
         archive.services = try context.fetch(FetchDescriptor<TrainingService>()).map(ServiceRecord.init)
         archive.rates = try context.fetch(FetchDescriptor<ServiceRate>()).map(RateRecord.init)
@@ -92,7 +98,7 @@ public struct BusinessArchive: Codable, Equatable {
         archive.expenses = try context.fetch(FetchDescriptor<Expense>()).map(ExpenseRecord.init)
         archive.courses = try context.fetch(FetchDescriptor<Course>()).map(CourseRecord.init)
         archive.courseParticipants = try context.fetch(FetchDescriptor<CourseParticipant>()).map(CourseParticipantRecord.init)
-        return archive.canonicalized()
+        return archive
     }
 
     public func validate(clientIDs: Set<UUID>) throws {
@@ -106,12 +112,14 @@ public struct BusinessArchive: Codable, Equatable {
         let sessionMap = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
         let packageMap = Dictionary(uniqueKeysWithValues: packages.map { ($0.id, $0) })
         let entryMap = Dictionary(uniqueKeysWithValues: ledgerEntries.map { ($0.id, $0) })
+        let rateMap = Dictionary(uniqueKeysWithValues: rates.map { ($0.id, $0) })
+        let participantsBySession = Dictionary(grouping: participants, by: \.sessionID)
         for preference in preferences {
             try require(clientIDs.contains(preference.clientID), "Cliente delle preferenze mancante.")
             if let serviceID = preference.serviceID {
                 try require(serviceIDs.contains(serviceID), "Servizio delle preferenze mancante.")
             }
-            if let rateID = preference.rateID, let rate = rates.first(where: { $0.id == rateID }) {
+            if let rateID = preference.rateID, let rate = rateMap[rateID] {
                 try require(rate.serviceID == preference.serviceID, "Tariffa delle preferenze di un altro servizio.")
             }
             if let packageID = preference.packageID, let package = packageMap[packageID] {
@@ -145,7 +153,7 @@ public struct BusinessArchive: Codable, Equatable {
             if let serviceID = session.serviceID {
                 try require(serviceIDs.contains(serviceID), "Servizio della lezione mancante.")
             }
-            let pair = participants.filter { $0.sessionID == session.id }
+            let pair = participantsBySession[session.id] ?? []
             try require(!pair.isEmpty && Set(pair.map(\.clientID)).count == pair.count,
                         "Una lezione richiede almeno un cliente, senza partecipanti duplicati.")
         }
@@ -183,7 +191,7 @@ public struct BusinessArchive: Codable, Equatable {
             guard let package = packageMap[use.packageID],
                   package.clientID == use.clientID,
                   let session = sessionMap[use.sessionID], session.statusRaw == SessionStatus.completed.rawValue,
-                  participants.contains(where: { $0.sessionID == use.sessionID && $0.clientID == use.clientID && $0.packageID == use.packageID }) else {
+                  (participantsBySession[use.sessionID] ?? []).contains(where: { $0.clientID == use.clientID && $0.packageID == use.packageID }) else {
                 throw BusinessError.inconsistentData("Utilizzo pacchetto senza lezione completata o cliente valido.")
             }
             if let prior = useSources[source] {
@@ -191,8 +199,10 @@ public struct BusinessArchive: Codable, Equatable {
             }
             useSources[source] = use
         }
+        var useCounts: [UUID: Int] = [:]
+        for use in useSources.values { useCounts[use.packageID, default: 0] += 1 }
         for package in packages where PackageKind(rawValue: package.kindRaw) != .timed {
-            try require(useSources.values.filter { $0.packageID == package.id }.count <= package.capacity,
+            try require(useCounts[package.id, default: 0] <= package.capacity,
                         "Il pacchetto supera il numero di lezioni disponibili.")
         }
         var sources: [String: LedgerRecord] = [:]
@@ -233,10 +243,16 @@ public struct BusinessArchive: Codable, Equatable {
         }
         _ = try BusinessRules.add(totals[.charge, default: 0], totals[.refund, default: 0])
         _ = try BusinessRules.add(totals[.payment, default: 0], totals[.credit, default: 0])
+        var idsBySource: [String: [UUID]] = [:]
+        for entry in ledgerEntries { idsBySource[entry.sourceKey.lowercased(), default: []].append(entry.id) }
+        var adjustmentsByOriginal: [UUID: [LedgerRecord]] = [:]
+        for entry in canonical {
+            if let originalID = entry.originalEntryID { adjustmentsByOriginal[originalID, default: []].append(entry) }
+        }
         for original in canonical where original.kindRaw == "payment" || original.kindRaw == "charge" {
             // Refunds/credits may refer to either physical copy of the same logical source.
-            let originalIDs = Set(ledgerEntries.filter { $0.sourceKey.lowercased() == original.sourceKey.lowercased() }.map(\.id))
-            let adjusted = try canonical.filter { $0.originalEntryID.map(originalIDs.contains) == true }
+            let originalIDs = idsBySource[original.sourceKey.lowercased()] ?? []
+            let adjusted = try originalIDs.flatMap { adjustmentsByOriginal[$0] ?? [] }
                 .reduce(Int64(0)) { try BusinessRules.add($0, $1.amountCents) }
             try require(adjusted <= original.amountCents, "Rettifiche superiori all'importo originale.")
         }
@@ -261,7 +277,7 @@ public struct BusinessArchive: Codable, Equatable {
             }
         }
         for session in sessions {
-            for participant in participants where participant.sessionID == session.id {
+            for participant in participantsBySession[session.id] ?? [] {
                 let source = BusinessRules.sessionSource(sessionID: session.id, clientID: participant.clientID)
                 if session.statusRaw == "completed" {
                     if participant.packageID != nil {
