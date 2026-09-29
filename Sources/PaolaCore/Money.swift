@@ -21,13 +21,22 @@ public enum Money {
 
     public static func format(_ cents: Int64) -> String {
         let magnitude = cents.magnitude
+        let fraction = magnitude % 100
+        return "\(cents < 0 ? "-" : "")\(groupedEuros(magnitude)),\(fraction < 10 ? "0" : "")\(fraction)\u{00A0}€"
+    }
+
+    /// Euro interi senza centesimi (troncati), con il punto delle migliaia: "1.250 €".
+    public static func formatWhole(_ cents: Int64) -> String {
+        "\(cents <= -100 ? "-" : "")\(groupedEuros(cents.magnitude))\u{00A0}€"
+    }
+
+    private static func groupedEuros(_ magnitude: UInt64) -> String {
         let euros = String(magnitude / 100)
         var grouped = ""
         for (index, digit) in euros.reversed().enumerated() {
             if index > 0 && index % 3 == 0 { grouped.append(".") }
             grouped.append(digit)
         }
-        let fraction = magnitude % 100
-        return "\(cents < 0 ? "-" : "")\(String(grouped.reversed())),\(fraction < 10 ? "0" : "")\(fraction) €"
+        return String(grouped.reversed())
     }
 }

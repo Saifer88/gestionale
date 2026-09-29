@@ -423,7 +423,7 @@ struct OverviewView: View {
                     Text(entry.clientName.isEmpty ? "Cliente" : entry.clientName)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    Text(Money.format(entry.totalCents))
+                    Text(euroLabel(entry.totalCents))
                         .font(.body.weight(.semibold)).monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.6)
                 }
@@ -455,7 +455,7 @@ struct OverviewView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(Money.format(client.residualCents))
+                            Text(euroLabel(client.residualCents))
                                 .font(.title3.weight(.semibold)).monospacedDigit()
                                 .foregroundStyle(.red)
                                 .lineLimit(1).minimumScaleFactor(0.6)
@@ -682,9 +682,9 @@ struct OverviewView: View {
         }
     }
 
-    /// Importo in euro interi, senza centesimi (es. "45 €").
+    /// Importo in euro interi, senza centesimi (es. "1.245 €").
     private func euroLabel(_ cents: Int64) -> String {
-        "\(cents / 100) €"
+        Money.formatWhole(cents)
     }
 
     /// Netto orario formattato in €/h (es. "42 €/h"), oppure "—" se non calcolabile.

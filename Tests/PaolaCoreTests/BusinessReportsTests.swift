@@ -14,7 +14,13 @@ final class BusinessMoneyTests: XCTestCase {
         XCTAssertEqual(Money.format(Int64.min), "-92.233.720.368.547.758,08 €")
         XCTAssertEqual(Money.format(0), "0,00 €")
     }
-
+    func testWholeEuroFormattingTruncatesCentsAndGroupsThousands() {
+        XCTAssertEqual(Money.formatWhole(4599), "45\u{00A0}€")
+        XCTAssertEqual(Money.formatWhole(125_099), "1.250\u{00A0}€")
+        XCTAssertEqual(Money.formatWhole(123_456_789), "1.234.567\u{00A0}€")
+        XCTAssertEqual(Money.formatWhole(-125_000), "-1.250\u{00A0}€")
+        XCTAssertEqual(Money.formatWhole(-50), "0\u{00A0}€")
+    }
     func testRejectsAmbiguityFractionsAndOverflow() {
         for input in ["", " ", "-1", "+1", "1,234", "1.234,56", "1,23.45", ".5", "1.",
                       "1e3", "NaN", "€12", "1 000", "１２", "92233720368547758.08",
