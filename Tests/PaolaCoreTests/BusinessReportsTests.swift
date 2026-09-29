@@ -34,6 +34,51 @@ final class BusinessReportsTests: XCTestCase {
                     kind: kind, amountCents: amount, sourceKey: source, originalEntryID: originalID)
     }
 
+    func testClientTotalValueCountsPlannedAndCompletedWithoutPackagePlusPackages() {
+        let package = LessonPackage(clientID: clientID, priceCents: 40000)
+        let planned = TrainingSession(startDate: date)
+        let completed = TrainingSession(startDate: date.addingTimeInterval(86400), status: .completed)
+        let covered = TrainingSession(startDate: date.addingTimeInterval(2 * 86400))
+        let excluded: [SessionStatus] = [.provisional, .cancelled, .noShow]
+        let others = excluded.enumerated().map { index, status in
+            TrainingSession(startDate: date.addingTimeInterval(Double(3 + index) * 86400), status: status)
+        }
+        let participants = [
+            SessionParticipant(sessionID: planned.id, clientID: clientID, priceCents: 5000),
+            SessionParticipant(sessionID: completed.id, clientID: clientID, priceCents: 3000),
+            SessionParticipant(sessionID: covered.id, clientID: clientID, priceCents: 5000, packageID: package.id)
+        ] + others.map { SessionParticipant(sessionID: $0.id, clientID: clientID, priceCents: 7000) }
+        let totals = BusinessReports.clientTotals(clientID: clientID, sessions: [planned, completed, covered] + others,
+                                                  participants: participants, packages: [package])
+        XCTAssertEqual(totals.totalValueCents, 48000)
+    }
+
+    func testTopClientsRanksPeriodValueAndKeepsTopThree() {
+        let ids = (0..<4).map { _ in UUID() }
+        let inPeriod = date.addingTimeInterval(86400)
+        let outside = date.addingTimeInterval(40 * 86400)
+        func session(_ start: Date, _ status: SessionStatus = .planned) -> TrainingSession {
+            TrainingSession(startDate: start, status: status)
+        }
+        let sessions = [session(inPeriod), session(inPeriod, .completed), session(inPeriod, .cancelled),
+                        session(outside), session(inPeriod), session(inPeriod)]
+        let package = LessonPackage(clientID: ids[1], clientName: "Bea", purchasedOn: inPeriod, priceCents: 20000)
+        let participants = [
+            SessionParticipant(sessionID: sessions[0].id, clientID: ids[0], clientName: "Anna", priceCents: 5000),
+            SessionParticipant(sessionID: sessions[1].id, clientID: ids[0], clientName: "Anna", priceCents: 5000),
+            SessionParticipant(sessionID: sessions[2].id, clientID: ids[2], clientName: "Carla", priceCents: 90000),
+            SessionParticipant(sessionID: sessions[3].id, clientID: ids[2], clientName: "Carla", priceCents: 90000),
+            SessionParticipant(sessionID: sessions[4].id, clientID: ids[3], clientName: "Dora", priceCents: 3000),
+            SessionParticipant(sessionID: sessions[5].id, clientID: ids[2], clientName: "Carla", priceCents: 4000,
+                               packageID: package.id),
+            SessionParticipant(sessionID: sessions[5].id, clientID: ids[1], clientName: "Bea", priceCents: 1000)
+        ]
+        let ranking = BusinessReports.topClients(from: date, to: date.addingTimeInterval(30 * 86400),
+                                                 sessions: sessions, participants: participants, packages: [package])
+        XCTAssertEqual(ranking.map(\.clientName), ["Bea", "Anna", "Dora"])
+        XCTAssertEqual(ranking.map(\.totalCents), [21000, 10000, 3000])
+    }
+
     func testStatementOpeningClosingAndExclusiveEndWithAllEntryTypes() {
         let beforeCharge = entry(.charge, 10000, day: -2)
         let beforePayment = entry(.payment, 3000, day: -1)

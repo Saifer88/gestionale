@@ -76,7 +76,7 @@ struct OverviewView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         shortcuts
-                        dashboardBody(summary, width: min(geo.size.width, 1200))
+                        dashboardBody(summary, width: min(geo.size.width, 1200), now: now)
                     }
                     .padding(24)
                     //.frame(maxWidth: 1200)
@@ -90,7 +90,7 @@ struct OverviewView: View {
     /// Appuntamenti a destra (1/4 su schermi ampi, fino a 1/3 sui piccoli),
     /// contatori a sinistra col resto dello spazio. Impilati sotto una soglia.
     @ViewBuilder
-    private func dashboardBody(_ summary: OverviewSummary, width: CGFloat) -> some View {
+    private func dashboardBody(_ summary: OverviewSummary, width: CGFloat, now: Date) -> some View {
         let spacing: CGFloat = 20
         // Larghezza del contenuto: larghezza disponibile meno il padding orizzontale.
         let available = width - 48
@@ -107,9 +107,15 @@ struct OverviewView: View {
                         .frame(width: upcomingWidth, alignment: .leading)
                 }
             }
+            // Miglior cliente e Da incassare si dividono i 3/5, Note i restanti 2/5.
+            let content = max(0, available - 2 * spacing)
             HStack(alignment: .top, spacing: spacing) {
+                bestClientsGroup(now: now)
+                    .frame(width: content * 3 / 10, alignment: .topLeading)
                 unpaidGroup(summary.unpaidByClient)
+                    .frame(width: content * 3 / 10, alignment: .topLeading)
                 generalNotesEditor
+                    .frame(width: content * 2 / 5, alignment: .topLeading)
             }
         }
     }
@@ -363,6 +369,69 @@ struct OverviewView: View {
                 .contentShape(Rectangle())
                 .modifier(HoverTooltip(text: isHeader ? netHeaderHelp : net.help))
         }
+    }
+
+    /// Gruppo "Miglior cliente": podio del mese e dell'anno correnti per valore totale
+    /// di appuntamenti e pacchetti.
+    private func bestClientsGroup(now: Date) -> some View {
+        let calendar = Calendar.current
+        let clientNames = Dictionary(clients.map { ($0.id, $0.fullName) }, uniquingKeysWith: { first, _ in first })
+        func podium(_ component: Calendar.Component) -> [BusinessReports.ClientRanking] {
+            guard let period = calendar.dateInterval(of: component, for: now) else { return [] }
+            return BusinessReports.topClients(from: period.start, to: period.end, sessions: sessions,
+                                              participants: participants, packages: packages)
+                .map { BusinessReports.ClientRanking(clientID: $0.clientID,
+                                                     clientName: clientNames[$0.clientID] ?? $0.clientName,
+                                                     totalCents: $0.totalCents) }
+        }
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Miglior cliente", systemImage: "trophy.fill")
+                    .font(.headline).foregroundStyle(Self.medalColors[0])
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 12) {
+                    podiumColumn("Mese", podium(.month), id: "month")
+                    Divider()
+                    podiumColumn("Anno", podium(.year), id: "year")
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .backgroundStyle(Self.medalColors[0].opacity(0.08))
+        .accessibilityIdentifier("overview.bestClients")
+    }
+
+    /// Oro, argento, bronzo.
+    private static let medalColors: [Color] = [
+        Color(red: 0.85, green: 0.65, blue: 0.13),
+        Color(red: 0.62, green: 0.64, blue: 0.68),
+        Color(red: 0.72, green: 0.45, blue: 0.20)
+    ]
+
+    private func podiumColumn(_ title: String, _ ranking: [BusinessReports.ClientRanking], id: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            if ranking.isEmpty {
+                Text("Nessun cliente nel periodo.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(Array(ranking.enumerated()), id: \.element.id) { index, entry in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "medal.fill")
+                        .foregroundStyle(Self.medalColors[index])
+                        .accessibilityLabel("\(index + 1)° posto")
+                    Text(entry.clientName.isEmpty ? "Cliente" : entry.clientName)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(Money.format(entry.totalCents))
+                        .font(.body.weight(.semibold)).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("overview.bestClients.\(id).\(index + 1)")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     /// Gruppo "Da incassare": clienti con lezioni completate non pagate e residuo.

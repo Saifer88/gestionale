@@ -328,6 +328,50 @@ public enum BusinessReports {
         net(canonicalEntries(entries).filter { $0.clientID == clientID })
     }
 
+    /// Posizione di un cliente nella classifica per valore di un periodo.
+    public struct ClientRanking: Identifiable, Equatable {
+        public let clientID: UUID
+        public let clientName: String
+        public let totalCents: Int64
+        public var id: UUID { clientID }
+        public init(clientID: UUID, clientName: String, totalCents: Int64) {
+            self.clientID = clientID; self.clientName = clientName; self.totalCents = totalCents
+        }
+    }
+
+    /// Classifica dei clienti per "valore totale appuntamenti e pacchetti" in [from, to):
+    /// stesse regole di `clientTotals`, per data dell'appuntamento o dell'acquisto.
+    public static func topClients(from: Date, to: Date, sessions: [TrainingSession],
+                                  participants: [SessionParticipant], packages: [LessonPackage],
+                                  limit: Int = 3) -> [ClientRanking] {
+        let valuedSessionIDs = Set(sessions.filter {
+            ($0.status == .planned || $0.status == .completed) && $0.startDate >= from && $0.startDate < to
+        }.map(\.id))
+        var totals: [UUID: Int64] = [:]
+        var names: [UUID: String] = [:]
+        var seen = Set<UUID>()
+        for participant in participants
+        where participant.packageID == nil && valuedSessionIDs.contains(participant.sessionID)
+            && seen.insert(participant.id).inserted {
+            totals[participant.clientID] = saturatedAdd(totals[participant.clientID, default: 0],
+                                                        max(0, participant.priceCents))
+            names[participant.clientID] = participant.clientName
+        }
+        for package in packages where package.purchasedOn >= from && package.purchasedOn < to {
+            totals[package.clientID] = saturatedAdd(totals[package.clientID, default: 0], max(0, package.priceCents))
+            if names[package.clientID] == nil { names[package.clientID] = package.clientName }
+        }
+        var ranking: [ClientRanking] = []
+        for (clientID, total) in totals where total > 0 {
+            ranking.append(ClientRanking(clientID: clientID, clientName: names[clientID] ?? "", totalCents: total))
+        }
+        ranking.sort { lhs, rhs in
+            if lhs.totalCents != rhs.totalCents { return lhs.totalCents > rhs.totalCents }
+            return lhs.clientName.localizedStandardCompare(rhs.clientName) == .orderedAscending
+        }
+        return Array(ranking.prefix(limit))
+    }
+
     /// Sintesi per la sezione "Saldi" del cliente.
     public struct ClientTotals: Equatable {
         public let completedCount: Int
@@ -344,8 +388,8 @@ public enum BusinessReports {
     /// - `completedCount`: appuntamenti completati (in cui il cliente partecipa).
     /// - `unpaidCount`: appuntamenti completati con almeno una quota del cliente non
     ///   pagata (`isPaid == false` sul partecipante senza pacchetto).
-    /// - `totalValueCents`: somma delle quote del cliente di TUTTI i suoi appuntamenti
-    ///   (ogni stato, deduplicati per partecipante) PIÙ i prezzi di tutti i suoi pacchetti.
+    /// - `totalValueCents`: quote del cliente negli appuntamenti programmati o completati
+    ///   senza pacchetto (deduplicate per partecipante) PIÙ i prezzi dei suoi pacchetti.
     public static func clientTotals(clientID: UUID, sessions: [TrainingSession],
                                     participants: [SessionParticipant],
                                     packages: [LessonPackage]) -> ClientTotals {
@@ -360,10 +404,12 @@ public enum BusinessReports {
                 && $0.packageID == nil && !$0.isPaid }
         }.count
 
-        // Quote del cliente su tutti gli appuntamenti (dedup per partecipante).
+        // Quote del cliente sugli appuntamenti programmati/completati (dedup per partecipante).
+        let valuedSessionIDs = Set(clientSessions
+            .filter { $0.status == .planned || $0.status == .completed }.map(\.id))
         var seen = Set<UUID>()
         let appointmentsValue = participants
-            .filter { $0.clientID == clientID }
+            .filter { $0.clientID == clientID && $0.packageID == nil && valuedSessionIDs.contains($0.sessionID) }
             .filter { seen.insert($0.id).inserted }
             .reduce(Int64(0)) { saturatedAdd($0, max(0, $1.priceCents)) }
         // Prezzi di tutti i pacchetti del cliente.
