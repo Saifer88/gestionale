@@ -32,6 +32,9 @@ private struct AgendaSnapshot {
     let conflictIDs: Set<UUID>
     let courseOccurrences: [CourseOccurrence]
 
+    static let empty = AgendaSnapshot(visibleSessions: [], participantsBySession: [:],
+                                      clientsByID: [:], conflictIDs: [], courseOccurrences: [])
+
     func people(of session: TrainingSession) -> [SessionParticipant] {
         participantsBySession[session.id] ?? []
     }
@@ -74,6 +77,9 @@ private struct AgendaContent: View {
     @State private var draggingSessionID: UUID?
     /// Fascia oraria scelta per creare un appuntamento da una casella del calendario.
     @State private var creationSlot: AgendaCreationSlot?
+    /// Indici dell'agenda calcolati una sola volta per cambio input, non a ogni render.
+    /// Mostra prima lo stato corrente, poi ricalcola in modo asincrono.
+    @State private var snapshot = AgendaSnapshot.empty
 
     init(period: Binding<AgendaPeriod>, selectedDate: Binding<Date>) {
         _period = period
@@ -95,19 +101,39 @@ private struct AgendaContent: View {
 
     private var interval: DateInterval { Self.interval(period: period, date: selectedDate) }
 
+    /// Chiave leggera: ricalcola lo snapshot solo quando un input rilevante cambia,
+    /// non a ogni render (durante drag, scroll o digitazione nella ricerca).
+    private var snapshotKey: String {
+        "\(period.rawValue)|\(interval.start.timeIntervalSinceReferenceDate)|\(status?.rawValue ?? "-")|\(search)|\(sessions.count)|\(participants.count)|\(courseParticipants.count)|\(packages.count)|\(clients.count)|\(blocks.count)"
+    }
+
     private func makeSnapshot() -> AgendaSnapshot {
         let interval = interval
-        let participantsBySession = Dictionary(grouping: participants, by: \.sessionID)
-        let visible = CalendarAppointments.visible(sessions, in: interval).filter { session in
+        // Appuntamenti visibili prima: riduce il lavoro successivo ai soli coinvolti.
+        let visible = CalendarAppointments.visible(sessions, in: interval)
+        let allBySession = Dictionary(grouping: participants, by: \.sessionID)
+        let filtered = visible.filter { session in
             guard status == nil || session.status == status else { return false }
             guard !search.isEmpty else { return true }
             return session.serviceName.localizedStandardContains(search)
-                || (participantsBySession[session.id] ?? []).contains { $0.clientName.localizedStandardContains(search) }
+                || (allBySession[session.id] ?? []).contains { $0.clientName.localizedStandardContains(search) }
+        }
+        // Partecipanti e clienti solo per gli appuntamenti visibili.
+        let visibleIDs = Set(filtered.map(\.id))
+        var participantsBySession: [UUID: [SessionParticipant]] = [:]
+        var neededClientIDs = Set<UUID>()
+        for (sessionID, people) in allBySession where visibleIDs.contains(sessionID) {
+            participantsBySession[sessionID] = people
+            for p in people { neededClientIDs.insert(p.clientID) }
+        }
+        var clientsByID: [UUID: Client] = [:]
+        for client in clients where neededClientIDs.contains(client.id) {
+            clientsByID[client.id] = client
         }
         return AgendaSnapshot(
-            visibleSessions: visible,
+            visibleSessions: filtered,
             participantsBySession: participantsBySession,
-            clientsByID: Dictionary(clients.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
+            clientsByID: clientsByID,
             conflictIDs: AgendaSnapshot.conflicts(in: sessions),
             courseOccurrences: CourseOccurrences.expand(courses: courses, participants: courseParticipants,
                                                         packages: packages, in: interval))
@@ -148,12 +174,14 @@ private struct AgendaContent: View {
                 ?? _courses.fetchError ?? _courseParticipants.fetchError {
                 ArchiveReadErrorView(error: error)
             } else {
-                agenda(makeSnapshot())
+                agenda(snapshot)
             }
         }
         .sectionTitle(.agenda)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agenda.screen")
+        .onAppear { snapshot = makeSnapshot() }
+        .onChange(of: snapshotKey) { _, _ in snapshot = makeSnapshot() }
         .searchable(text: $search, prompt: "Cliente o servizio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
