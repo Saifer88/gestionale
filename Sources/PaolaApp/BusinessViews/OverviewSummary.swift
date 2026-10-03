@@ -67,10 +67,10 @@ struct OverviewSummary {
         entries: [LedgerEntry], sessions: [TrainingSession], participants: [SessionParticipant],
         expenses: [Expense] = [], packages: [LessonPackage] = [],
         courses: [Course] = [], courseParticipants: [CourseParticipant] = [],
-        now: Date = Date(), calendar: Calendar = SchedulingSuggestions.calendar
+        now: Date = Date(), incomeReferenceDate: Date? = nil, calendar: Calendar = SchedulingSuggestions.calendar
     ) throws {
         income = try IncomeSummary(entries: entries, expenses: expenses, sessions: sessions,
-                                   packages: packages, now: now, calendar: calendar)
+                                   packages: packages, now: incomeReferenceDate ?? now, calendar: calendar)
         guard let week = calendar.dateInterval(of: .weekOfYear, for: now),
               let day = calendar.dateInterval(of: .day, for: now) else {
             throw SchedulingError.invalidDate

@@ -21,6 +21,7 @@ struct OverviewView: View {
     @State private var payingClient: UnpaidClientSummary?
     @State private var conversionInput = ""
     @State private var operation = BusinessOperation()
+    @State private var selectedMonth = Date()
 
     private var readError: Error? {
         let errors: [Error?] = [
@@ -65,7 +66,8 @@ struct OverviewView: View {
         switch Result(catching: {
             try OverviewSummary(entries: entries, sessions: sessions, participants: participants,
                                 expenses: expenses, packages: packages,
-                                courses: courses, courseParticipants: courseParticipants, now: now)
+                                courses: courses, courseParticipants: courseParticipants, now: now,
+                                incomeReferenceDate: selectedMonth)
         }) {
         case .failure(let error):
             ArchiveReadErrorView(error: error)
@@ -110,7 +112,7 @@ struct OverviewView: View {
             // Miglior cliente e Da incassare si dividono i 3/5, Note i restanti 2/5.
             let content = max(0, available - 2 * spacing)
             HStack(alignment: .top, spacing: spacing) {
-                bestClientsGroup(now: now)
+                bestClientsGroup(now: now, referenceDate: selectedMonth)
                     .frame(width: content * 3 / 10, alignment: .topLeading)
                 unpaidGroup(summary.unpaidByClient)
                     .frame(width: content * 3 / 10, alignment: .topLeading)
@@ -373,11 +375,11 @@ struct OverviewView: View {
 
     /// Gruppo "Miglior cliente": podio del mese e dell'anno correnti per valore totale
     /// di appuntamenti e pacchetti.
-    private func bestClientsGroup(now: Date) -> some View {
+    private func bestClientsGroup(now: Date, referenceDate: Date) -> some View {
         let calendar = Calendar.current
         let clientNames = Dictionary(clients.map { ($0.id, $0.fullName) }, uniquingKeysWith: { first, _ in first })
-        func podium(_ component: Calendar.Component) -> [BusinessReports.ClientRanking] {
-            guard let period = calendar.dateInterval(of: component, for: now) else { return [] }
+        func podium(_ component: Calendar.Component, for date: Date) -> [BusinessReports.ClientRanking] {
+            guard let period = calendar.dateInterval(of: component, for: date) else { return [] }
             return BusinessReports.topClients(from: period.start, to: period.end, sessions: sessions,
                                               participants: participants, packages: packages)
                 .map { BusinessReports.ClientRanking(clientID: $0.clientID,
@@ -390,9 +392,9 @@ struct OverviewView: View {
                     .font(.headline).foregroundStyle(Self.medalColors[0])
                     .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .leading, spacing: 12) {
-                    podiumColumn("Mese", podium(.month), id: "month")
+                    podiumColumn("Mese", podium(.month, for: referenceDate), id: "month")
                     Divider()
-                    podiumColumn("Anno", podium(.year), id: "year")
+                    podiumColumn("Anno", podium(.year, for: now), id: "year")
                 }
             }
             .padding(.vertical, 6)
@@ -703,13 +705,44 @@ struct OverviewView: View {
     }
 
     private var shortcuts: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { shortcutButtons }
-            VStack(alignment: .leading, spacing: 12) { shortcutButtons }
+        HStack(spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { shortcutButtons }
+                VStack(alignment: .leading, spacing: 12) { shortcutButtons }
+            }
+            .buttonStyle(.borderedProminent)
+            Spacer()
+            monthSelectorControls
         }
-        .buttonStyle(.borderedProminent)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("overview.row.shortcuts")
+    }
+
+    private var monthSelectorControls: some View {
+        HStack(spacing: 6) {
+            Button {
+                selectedMonth = Calendar.current.date(byAdding: .month, value: -1, to: selectedMonth) ?? selectedMonth
+            } label: {
+                Label("Mese precedente", systemImage: "chevron.left")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.bordered)
+            Text(selectedMonth.formatted(.dateTime.month().year().locale(Locale(identifier: "it_IT"))))
+                .font(.headline)
+                .frame(minWidth: 90, alignment: .center)
+            Button {
+                selectedMonth = Calendar.current.date(byAdding: .month, value: 1, to: selectedMonth) ?? selectedMonth
+            } label: {
+                Label("Mese successivo", systemImage: "chevron.right")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.bordered)
+            Button("Oggi") {
+                selectedMonth = Date()
+            }
+            .buttonStyle(.bordered)
+        }
+        .accessibilityIdentifier("overview.monthPicker")
     }
 
     @ViewBuilder
