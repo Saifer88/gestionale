@@ -352,37 +352,106 @@ private struct AgendaContent: View {
         GeometryReader { geometry in
             let columns = weekDays(snapshot)
             let count = max(1, columns.count)
-            let width = max(180, (geometry.size.width - 32 - CGFloat(count - 1) * 12) / CGFloat(count))
+            let hourHeight: CGFloat = 72
+            let gutterWidth: CGFloat = 60
+            let columnWidth = max(160, (geometry.size.width - gutterWidth - 24 - CGFloat(count - 1) * 8) / CGFloat(count))
+            let hours = Array(7...21)
+
             ScrollView([.horizontal, .vertical]) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(columns, id: \.self) { day in
-                        VStack(alignment: .leading, spacing: 8) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(SchedulingSuggestions.dayLabel(day)).font(.headline)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header row with day names
+                    HStack(alignment: .top, spacing: 8) {
+                        // Empty space above time gutter
+                        Color.clear.frame(width: gutterWidth, height: 50)
+
+                        // Day headers
+                        ForEach(columns, id: \.self) { day in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(SchedulingSuggestions.dayLabel(day))
+                                    .font(.headline)
                                 if SchedulingSuggestions.calendar.isDateInToday(day) {
-                                    Text("Oggi").font(.caption.bold()).foregroundStyle(.teal)
+                                    Text("Oggi")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.teal)
                                 }
                             }
-                            .frame(maxWidth: .infinity, minHeight: 46, alignment: .topLeading)
-                            Divider()
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(hourRows(on: day, snapshot)) { row in
-                                    hourCell(row, snapshot)
+                            .frame(width: columnWidth, height: 50, alignment: .leading)
+                        }
+                    }
+                    .padding(.bottom, 8)
+
+                    Divider()
+
+                    // Hour rows (each hour is a row spanning all day columns)
+                    ForEach(hours, id: \.self) { hour in
+                        HStack(alignment: .top, spacing: 8) {
+                            // Time label in gutter
+                            Text(String(format: "%02d:00", hour))
+                                .font(.caption2.weight(.medium))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: gutterWidth, height: hourHeight, alignment: .topTrailing)
+                                .padding(.top, 4)
+
+                            // Hour cells for each day column
+                            ForEach(columns, id: \.self) { day in
+                                let rows = hourRows(on: day, snapshot)
+                                if let row = rows.first(where: { $0.hour == hour }) {
+                                    hourCellForGrid(row, snapshot, height: hourHeight)
+                                        .frame(width: columnWidth)
+                                } else {
+                                    emptyHourCellForGrid(day: day, hour: hour, height: hourHeight, snapshot: snapshot)
+                                        .frame(width: columnWidth)
                                 }
                             }
                         }
-                        .padding(12)
-                        .frame(width: width, alignment: .topLeading)
-                        .frame(minHeight: max(160, geometry.size.height - 32), alignment: .topLeading)
-                        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("agenda.weekColumn.\(SchedulingSuggestions.calendar.component(.weekday, from: day))")
                     }
                 }
                 .padding(16)
             }
             .accessibilityIdentifier("agenda.weekColumns")
         }
+    }
+
+    @ViewBuilder private func hourCellForGrid(_ row: AgendaHourRow, _ snapshot: AgendaSnapshot, height: CGFloat) -> some View {
+        let dragging = draggingSessionID != nil
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(row.courses) { occurrence in
+                courseCard(occurrence)
+            }
+            ForEach(row.sessions) { session in
+                itemRow(session, snapshot)
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 4).padding(.horizontal, 6)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
+            }
+            if row.isEmpty {
+                emptyHourContent(row, dragging: dragging)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
+        .padding(6)
+        .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .modifier(HourDropModifier(row: row, dragging: dragging, onDrop: { drop(sessionID: $0, on: row) }))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("agenda.hourCell.\(SchedulingSuggestions.calendar.component(.weekday, from: row.start)).\(row.hour)")
+    }
+
+    @ViewBuilder private func emptyHourCellForGrid(day: Date, hour: Int, height: CGFloat, snapshot: AgendaSnapshot) -> some View {
+        let calendar = SchedulingSuggestions.calendar
+        let start = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
+        let row = AgendaHourRow(start: start, hour: hour, sessions: [], courses: [], occupantID: nil, isFree: true)
+        let dragging = draggingSessionID != nil
+
+        VStack(alignment: .leading, spacing: 4) {
+            emptyHourContent(row, dragging: dragging)
+        }
+        .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
+        .padding(6)
+        .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .modifier(HourDropModifier(row: row, dragging: dragging, onDrop: { drop(sessionID: $0, on: row) }))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("agenda.hourCell.\(calendar.component(.weekday, from: day)).\(hour)")
     }
 
     @ViewBuilder private func daySection(_ day: Date, _ snapshot: AgendaSnapshot) -> some View {
@@ -590,14 +659,14 @@ private struct AgendaContent: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .leading)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(row.courses) { occurrence in
                     courseCard(occurrence)
                 }
                 ForEach(row.sessions) { session in
                     itemRow(session, snapshot)
                         .buttonStyle(.plain)
-                        .padding(10)
+                        .padding(.vertical, 6).padding(.horizontal, 10)
                         .background(.background, in: RoundedRectangle(cornerRadius: 10))
                 }
                 if row.isEmpty {
@@ -606,7 +675,7 @@ private struct AgendaContent: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
         .modifier(HourDropModifier(row: row, dragging: dragging, onDrop: { drop(sessionID: $0, on: row) }))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agenda.hourCell.\(SchedulingSuggestions.calendar.component(.weekday, from: row.start)).\(row.hour)")

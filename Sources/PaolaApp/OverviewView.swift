@@ -293,83 +293,70 @@ struct OverviewView: View {
         ])
     }
 
-    /// Gruppo "Netto" a tutta larghezza: neri, bianchi, INPS, imposte in colonne strette
-    /// e la colonna finale Netto grande (come i contatori) così risalta. Righe mese/anno.
+    /// Gruppo "Netto" a tutta larghezza: ristrutturato per chiarezza con etichette a sinistra
+    /// e valori Netto in evidenza a destra.
     private func netGroup(_ summary: OverviewSummary) -> some View {
-        // Colonne "minori" (strette), poi la colonna Netto evidenziata a parte.
-        let minorColumns: [(String, KeyPath<TaxBreakdown, Int64>)] = [
-            ("Neri", \.blackCents), ("Bianchi", \.whiteCents),
-            ("INPS", \.inpsCents), ("Imposte", \.taxCents)
-        ]
-        // Tooltip di intestazione (formule generiche) per Neri/Bianchi/INPS/Imposte.
-        let headerHelp: [String?] = [nil, nil, TaxBreakdown.inpsFormula, TaxBreakdown.taxFormula]
         return GroupBox {
-            VStack(alignment: .leading, spacing: 8) {
-                netRow(label: "", minor: minorColumns.map { NetCell(text: $0.0, help: nil) },
-                       net: NetCell(text: "Netto", help: nil), isHeader: true,
-                       headerHelp: headerHelp, netHeaderHelp: TaxBreakdown.netFormula)
-                netRow(label: "Mese", minor: netCells(summary.income.monthlyTax, minorColumns),
-                       net: NetCell(text: Money.format(summary.income.monthlyTax.netCents),
-                                    help: summary.income.monthlyTax.netSteps))
+            VStack(alignment: .leading, spacing: 12) {
+                netRow(label: "Mese",
+                       black: summary.income.monthlyTax.blackCents,
+                       white: summary.income.monthlyTax.whiteCents,
+                       inps: summary.income.monthlyTax.inpsCents,
+                       tax: summary.income.monthlyTax.taxCents,
+                       net: summary.income.monthlyTax.netCents,
+                       netHelp: summary.income.monthlyTax.netSteps)
                     .accessibilityIdentifier("overview.net.month")
-                netRow(label: "Anno", minor: netCells(summary.income.annualTax, minorColumns),
-                       net: NetCell(text: Money.format(summary.income.annualTax.netCents),
-                                    help: summary.income.annualTax.netSteps))
+                Divider()
+                netRow(label: "Anno",
+                       black: summary.income.annualTax.blackCents,
+                       white: summary.income.annualTax.whiteCents,
+                       inps: summary.income.annualTax.inpsCents,
+                       tax: summary.income.annualTax.taxCents,
+                       net: summary.income.annualTax.netCents,
+                       netHelp: summary.income.annualTax.netSteps)
                     .accessibilityIdentifier("overview.net.year")
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
         }
         .backgroundStyle(Color.purple.opacity(0.08))
         .accessibilityIdentifier("overview.net")
     }
 
-    /// Cella della tabella Netto: testo mostrato e tooltip (operazioni) opzionale.
-    private struct NetCell { let text: String; let help: String? }
-
-    /// Celle valore di una riga (Mese/Anno) con i tooltip delle operazioni reali su
-    /// INPS e Imposte (Neri/Bianchi non hanno operazioni: sono somme dirette).
-    private func netCells(_ tax: TaxBreakdown,
-                          _ columns: [(String, KeyPath<TaxBreakdown, Int64>)]) -> [NetCell] {
-        columns.map { title, keyPath in
-            let help: String?
-            switch title {
-            case "INPS": help = tax.inpsSteps
-            case "Imposte": help = tax.taxSteps
-            default: help = nil
-            }
-            return NetCell(text: euroLabel(tax[keyPath: keyPath]), help: help)
-        }
-    }
-
-    /// Una riga della tabella Netto: etichetta + colonne minori strette + colonna Netto
-    /// grande (evidenziata). La colonna Netto usa un font maggiore, come i contatori.
-    /// I tooltip (operazioni in colonna) compaiono al passaggio del mouse.
-    private func netRow(label: String, minor: [NetCell], net: NetCell, isHeader: Bool = false,
-                        headerHelp: [String?] = [], netHeaderHelp: String? = nil) -> some View {
-        HStack(spacing: 6) {
+    /// Riga del Netto: etichetta a sinistra, breakdown compatto, Netto grande a destra.
+    private func netRow(label: String, black: Int64, white: Int64, inps: Int64, tax: Int64, net: Int64, netHelp: String?) -> some View {
+        HStack(alignment: .center, spacing: 16) {
             Text(label)
-                .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                .frame(width: 34, alignment: .leading)
-            ForEach(Array(minor.enumerated()), id: \.offset) { index, cell in
-                let tip = isHeader ? (index < headerHelp.count ? headerHelp[index] : nil) : cell.help
-                Text(cell.text)
-                    .font(isHeader ? .caption2.weight(.semibold) : .caption2)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .lineLimit(1).minimumScaleFactor(0.5)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .contentShape(Rectangle())
-                    .modifier(HoverTooltip(text: tip))
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(width: 50, alignment: .leading)
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Neri").font(.caption2).foregroundStyle(.secondary)
+                    Text(euroLabel(black)).font(.subheadline.monospacedDigit())
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bianchi").font(.caption2).foregroundStyle(.secondary)
+                    Text(euroLabel(white)).font(.subheadline.monospacedDigit())
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("INPS").font(.caption2).foregroundStyle(.secondary)
+                    Text(euroLabel(inps)).font(.subheadline.monospacedDigit())
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Imposte").font(.caption2).foregroundStyle(.secondary)
+                    Text(euroLabel(tax)).font(.subheadline.monospacedDigit())
+                }
             }
-            // Colonna Netto: larga e in risalto.
-            Text(net.text)
-                .font(isHeader ? .subheadline.weight(.semibold) : .title3.weight(.semibold))
-                .foregroundStyle(isHeader ? Color.secondary : Color.purple)
-                .monospacedDigit()
-                .lineLimit(1).minimumScaleFactor(0.5)
-                .frame(width: 150, alignment: .trailing)
-                .contentShape(Rectangle())
-                .modifier(HoverTooltip(text: isHeader ? netHeaderHelp : net.help))
+            .foregroundStyle(.secondary)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Netto").font(.caption2).foregroundStyle(.secondary)
+                Text(Money.format(net))
+                    .font(.title2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.purple)
+                    .contentShape(Rectangle())
+                    .modifier(HoverTooltip(text: netHelp))
+            }
         }
     }
 
@@ -411,24 +398,33 @@ struct OverviewView: View {
     ]
 
     private func podiumColumn(_ title: String, _ ranking: [BusinessReports.ClientRanking], id: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             if ranking.isEmpty {
                 Text("Nessun cliente nel periodo.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             ForEach(Array(ranking.enumerated()), id: \.element.id) { index, entry in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: "medal.fill")
-                        .foregroundStyle(Self.medalColors[index])
-                        .accessibilityLabel("\(index + 1)° posto")
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(Self.medalColors[index].opacity(0.15))
+                            .frame(width: 28, height: 28)
+                        Image(systemName: "medal.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Self.medalColors[index])
+                    }
+                    .accessibilityLabel("\(index + 1)° posto")
                     Text(entry.clientName.isEmpty ? "Cliente" : entry.clientName)
+                        .font(.body.weight(.medium))
                         .lineLimit(1)
-                    Spacer(minLength: 4)
+                    Spacer(minLength: 8)
                     Text(euroLabel(entry.totalCents))
-                        .font(.body.weight(.semibold)).monospacedDigit()
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(Self.medalColors[0])
                         .lineLimit(1).minimumScaleFactor(0.6)
                 }
+                .padding(.vertical, 4)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("overview.bestClients.\(id).\(index + 1)")
             }
@@ -440,25 +436,35 @@ struct OverviewView: View {
     @ViewBuilder
     private func unpaidGroup(_ clients: [UnpaidClientSummary]) -> some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Da incassare", systemImage: "exclamationmark.circle.fill")
-                    .font(.headline).foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Da incassare", systemImage: "exclamationmark.circle.fill")
+                        .font(.headline).foregroundStyle(.red)
+                    Spacer()
+                    if !clients.isEmpty {
+                        Text("\(clients.count)")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(Color.red.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.red)
+                    }
+                }
                 if clients.isEmpty {
                     Text("Nessuna lezione completata da incassare.")
                         .font(.callout).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ForEach(clients) { client in
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(client.clientName.isEmpty ? "Cliente" : client.clientName).font(.body)
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(client.clientName.isEmpty ? "Cliente" : client.clientName)
+                                    .font(.body.weight(.medium))
                                 Text("\(client.sessionCount) \(client.sessionCount == 1 ? "lezione" : "lezioni")")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Text(euroLabel(client.residualCents))
-                                .font(.title3.weight(.semibold)).monospacedDigit()
+                                .font(.headline.monospacedDigit())
                                 .foregroundStyle(.red)
                                 .lineLimit(1).minimumScaleFactor(0.6)
                             Button {
@@ -467,16 +473,19 @@ struct OverviewView: View {
                                 Label("Salda", systemImage: "eurosign.circle.fill")
                             }
                             .labelStyle(.titleAndIcon)
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.bordered)
                             .tint(.green)
                             .help("Segna come pagate tutte le lezioni di \(client.clientName)")
                             .accessibilityIdentifier("overview.unpaid.settle.\(client.clientID.uuidString)")
                         }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .background(Color.red.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                         .accessibilityIdentifier("overview.unpaid.\(client.clientID.uuidString)")
                     }
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
         }
         .backgroundStyle(Color.red.opacity(0.08))
         .accessibilityIdentifier("overview.unpaid")
@@ -719,29 +728,37 @@ struct OverviewView: View {
     }
 
     private var monthSelectorControls: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             Button {
                 selectedMonth = Calendar.current.date(byAdding: .month, value: -1, to: selectedMonth) ?? selectedMonth
             } label: {
-                Label("Mese precedente", systemImage: "chevron.left")
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
             }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
             Text(selectedMonth.formatted(.dateTime.month().year().locale(Locale(identifier: "it_IT"))))
-                .font(.headline)
-                .frame(minWidth: 90, alignment: .center)
+                .font(.subheadline.weight(.semibold))
+                .frame(minWidth: 100, alignment: .center)
             Button {
                 selectedMonth = Calendar.current.date(byAdding: .month, value: 1, to: selectedMonth) ?? selectedMonth
             } label: {
-                Label("Mese successivo", systemImage: "chevron.right")
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
             }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            Divider()
+                .frame(height: 16)
             Button("Oggi") {
                 selectedMonth = Date()
             }
+            .font(.caption.weight(.medium))
             .buttonStyle(.bordered)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         .accessibilityIdentifier("overview.monthPicker")
     }
 
