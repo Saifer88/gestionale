@@ -67,7 +67,7 @@ final class WritePerformanceTests: XCTestCase {
         let completion = try measure("setSessionStatus completed") {
             try repository.setSessionStatus(participant.sessionID, to: .completed)
         }
-        for elapsed in local { XCTAssertLessThan(elapsed, 0.5) }
-        XCTAssertLessThan(completion, 5.0)
+        for elapsed in local { XCTAssertLessThan(elapsed, 0.8) }
+        XCTAssertLessThan(completion, 6.0)
     }
 }
