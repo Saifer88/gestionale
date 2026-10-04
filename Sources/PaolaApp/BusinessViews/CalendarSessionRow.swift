@@ -21,19 +21,28 @@ struct CalendarSessionRow: View {
                 .font(.subheadline.weight(.semibold)).monospacedDigit()
                 .foregroundStyle(.secondary)
             ForEach(people) { person in
-                HStack(alignment: .top, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(clients.first(where: { $0.id == person.clientID })?.fullName ?? person.clientName)
-                            .font(.body.weight(.medium))
-                            .fixedSize(horizontal: false, vertical: true)
-                        if person.packageID != nil {
-                            Text("Pacchetto in uso").font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            Text(Money.format(person.priceCents)).monospacedDigit()
-                        }
+                HStack(alignment: .center, spacing: 8) {
+                    // Spazio riservato per isPaid per allineamento uniforme
+                    Group {
                         if let onTogglePaid, person.packageID == nil {
                             paidToggle(for: person, action: onTogglePaid)
+                        } else {
+                            Color.clear.frame(width: 24, height: 24)
                         }
+                    }
+                    Text(clients.first(where: { $0.id == person.clientID })?.fullName ?? person.clientName)
+                        .font(.body.weight(.medium))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    if person.packageID != nil {
+                        Image(systemName: "shippingbox.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(Money.format(person.priceCents))
+                            .font(.subheadline)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -53,35 +62,29 @@ struct CalendarSessionRow: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
             }
-            statusBadge
+            if !session.notes.isEmpty {
+                Text(session.notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(.primary)
-        .padding(.vertical, 6).padding(.horizontal, 10)
-        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 3).padding(.horizontal, 10)
+        .background(backgroundColorForStatus, in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .combine)
         .accessibilityValue(session.status.title)
     }
 
-    @ViewBuilder
-    private var statusBadge: some View {
+    private var backgroundColorForStatus: Color {
         switch session.status {
         case .completed:
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                Text("Completato")
-            }
-            .font(.caption2)
-            .foregroundStyle(.green)
+            return Color.green.opacity(0.15)
         case .provisional:
-            HStack(spacing: 4) {
-                Image(systemName: "circle.dashed")
-                Text("Provvisorio")
-            }
-            .font(.caption2)
-            .foregroundStyle(.orange)
+            return Color.orange.opacity(0.15)
         default:
-            EmptyView()
+            return Color.secondary.opacity(0.06)
         }
     }
 

@@ -203,33 +203,44 @@ private struct AgendaContent: View {
     private func agenda(_ snapshot: AgendaSnapshot) -> some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Picker("Vista agenda", selection: $period) {
-                        ForEach(AgendaPeriod.allCases) { Text($0.rawValue).tag($0) }
+                HStack(alignment: .top, spacing: 16) {
+                    // Prima colonna: vista agenda
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Vista agenda").font(.caption).foregroundStyle(.secondary)
+                        Picker("Vista agenda", selection: $period) {
+                            ForEach(AgendaPeriod.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .accessibilityIdentifier("agenda.period")
                     }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("agenda.period")
+
+                    Divider().frame(height: 60)
+
+                    // Seconda colonna: selettore data e stato
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Button { move(-1) } label: { Image(systemName: "chevron.left") }
+                                .accessibilityLabel("Periodo precedente")
+                            DatePicker("Data", selection: $selectedDate, displayedComponents: .date)
+                            Button { move(1) } label: { Image(systemName: "chevron.right") }
+                                .accessibilityLabel("Periodo successivo")
+                            Button("Oggi") { selectedDate = Date() }
+                        }
+                        ViewThatFits(in: .horizontal) {
+                            HStack { filters }
+                            VStack(alignment: .leading) { filters }
+                        }
+                    }
+
                     Spacer(minLength: 12)
-                    // Riepilogo del periodo in alto a destra: Totale, Bianco, Nero e barra.
+
+                    // Terza colonna: totali con bianco e nero
                     totalsSummary(accountingTotals(snapshot))
                 }
-                HStack {
-                    Button { move(-1) } label: { Image(systemName: "chevron.left") }
-                        .accessibilityLabel("Periodo precedente")
-                    DatePicker("Data", selection: $selectedDate, displayedComponents: .date)
-                    Button { move(1) } label: { Image(systemName: "chevron.right") }
-                        .accessibilityLabel("Periodo successivo")
-                    Button("Oggi") { selectedDate = Date() }
-                }
-                Text("\(BusinessFormatting.day(interval.start)) – \(BusinessFormatting.day(interval.end.addingTimeInterval(-1)))")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                ViewThatFits(in: .horizontal) {
-                    HStack { filters }
-                    VStack(alignment: .leading) { filters }
-                }
-                let minutes = scheduledMinutes(snapshot)
-                Text("\(snapshot.visibleSessions.count) appuntamenti · \(minutes / 60) h \(minutes % 60) min")
-                    .font(.caption).foregroundStyle(.secondary)
+
+                //Text("\(BusinessFormatting.day(interval.start)) – \(BusinessFormatting.day(interval.end.addingTimeInterval(-1)))")
+                //    .font(.subheadline).foregroundStyle(.secondary)
                 if draggingSessionID != nil {
                     HStack(spacing: 8) {
                         Image(systemName: "hand.draw")
@@ -303,7 +314,11 @@ private struct AgendaContent: View {
     /// Riepilogo in alto a destra: Totale, Bianco e Nero (stessa dimensione del nome
     /// del giorno) con una barra che mostra le percentuali di bianco/nero sul totale.
     @ViewBuilder private func totalsSummary(_ totals: AccountingTotals) -> some View {
+        let minutes = scheduledMinutes(snapshot)
+
         VStack(alignment: .trailing, spacing: 2) {
+            Text("\(snapshot.visibleSessions.count) appuntamenti · \(minutes / 60) h \(minutes % 60) min")
+                    .font(.caption).foregroundStyle(.secondary)
             LabeledContent {
                 Text(Money.format(totals.total)).font(.headline).monospacedDigit()
             } label: {
@@ -352,7 +367,7 @@ private struct AgendaContent: View {
         GeometryReader { geometry in
             let columns = weekDays(snapshot)
             let count = max(1, columns.count)
-            let hourHeight: CGFloat = 72
+            let hourHeight: CGFloat = 40
             let gutterWidth: CGFloat = 60
             let columnWidth = max(160, (geometry.size.width - gutterWidth - 24 - CGFloat(count - 1) * 8) / CGFloat(count))
             let hours = Array(7...21)
@@ -415,14 +430,14 @@ private struct AgendaContent: View {
 
     @ViewBuilder private func hourCellForGrid(_ row: AgendaHourRow, _ snapshot: AgendaSnapshot, height: CGFloat) -> some View {
         let dragging = draggingSessionID != nil
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(row.courses) { occurrence in
                 courseCard(occurrence)
             }
             ForEach(row.sessions) { session in
                 itemRow(session, snapshot)
                     .buttonStyle(.plain)
-                    .padding(.vertical, 4).padding(.horizontal, 6)
+                    .padding(.vertical, 2).padding(.horizontal, 6)
                     .background(.background, in: RoundedRectangle(cornerRadius: 8))
             }
             if row.isEmpty {
@@ -430,7 +445,7 @@ private struct AgendaContent: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
-        .padding(6)
+        .padding(2)
         .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         .modifier(HourDropModifier(row: row, dragging: dragging, onDrop: { drop(sessionID: $0, on: row) }))
         .accessibilityElement(children: .contain)
@@ -513,15 +528,6 @@ private struct AgendaContent: View {
                     .help("Conferma l'appuntamento provvisorio (lo rende programmato).")
                     .accessibilityLabel("Conferma appuntamento provvisorio")
                     .accessibilityIdentifier("session.confirmProvisional")
-                }
-                Spacer(minLength: 0)
-                // Icona pacchetto ancorata in basso a destra del badge (stessa posizione
-                // dell'icona corso), quando almeno un partecipante usa un pacchetto.
-                if people.contains(where: { $0.packageID != nil }) {
-                    Image(systemName: "rectangle.stack.fill")
-                        .font(.callout).foregroundStyle(.blue)
-                        .help("Lezione con pacchetto in uso")
-                        .accessibilityLabel("Pacchetto in uso")
                 }
             }
         }
@@ -659,7 +665,7 @@ private struct AgendaContent: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .leading)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(row.courses) { occurrence in
                     courseCard(occurrence)
                 }
@@ -675,7 +681,7 @@ private struct AgendaContent: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 0)
         .modifier(HourDropModifier(row: row, dragging: dragging, onDrop: { drop(sessionID: $0, on: row) }))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agenda.hourCell.\(SchedulingSuggestions.calendar.component(.weekday, from: row.start)).\(row.hour)")
