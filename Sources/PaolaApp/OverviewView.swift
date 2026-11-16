@@ -565,8 +565,41 @@ struct OverviewView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Indici calcolati una volta per render della lista, al posto di filtri per riga.
+    private struct UpcomingIndex {
+        let participantsBySession: [UUID: [SessionParticipant]]
+        let clientsByID: [UUID: Client]
+        let conflictingSessions: Set<UUID>
+        let blocks: [Unavailability]
+    }
+
+    private func makeUpcomingIndex() -> UpcomingIndex {
+        // Sweep sulle sessioni ordinate: stesso criterio di sovrapposizione di
+        // `BusinessDates.conflicts(for:sessions:blocks:)`, senza confronto riga per riga.
+        let active = sessions.filter { $0.status == .planned || $0.status == .completed }
+            .sorted { $0.startDate < $1.startDate }
+        var conflicting = Set<UUID>()
+        for (index, session) in active.enumerated() {
+            let end = session.endDate
+            var next = index + 1
+            while next < active.count, active[next].startDate < end {
+                if active[next].id != session.id {
+                    conflicting.insert(session.id)
+                    conflicting.insert(active[next].id)
+                }
+                next += 1
+            }
+        }
+        return UpcomingIndex(
+            participantsBySession: Dictionary(grouping: participants, by: \.sessionID),
+            clientsByID: Dictionary(clients.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
+            conflictingSessions: conflicting,
+            blocks: blocks)
+    }
+
     private func upcomingList(_ days: [UpcomingDay]) -> some View {
-        GroupBox("Prossimi appuntamenti") {
+        let index = makeUpcomingIndex()
+        return GroupBox("Prossimi appuntamenti") {
             if days.isEmpty {
                 Text("Nessun appuntamento in programma.").foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -575,7 +608,7 @@ struct OverviewView: View {
                 // Due colonne parallele: oggi a sinistra, domani a destra.
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(days) { day in
-                        dayColumn(day).frame(maxWidth: .infinity, alignment: .leading)
+                        dayColumn(day, index: index).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.top, 8)
@@ -585,7 +618,7 @@ struct OverviewView: View {
         .accessibilityIdentifier("overview.row.upcoming")
     }
 
-    private func dayColumn(_ day: UpcomingDay) -> some View {
+    private func dayColumn(_ day: UpcomingDay, index: UpcomingIndex) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(dayHeader(day.date))
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
@@ -593,7 +626,7 @@ struct OverviewView: View {
                 switch item {
                 case .session(let session):
                     NavigationLink(value: AppRoute.session(session.id)) {
-                        upcomingRow(session)
+                        upcomingRow(session, index: index)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("overview.appointment.\(session.id.uuidString)")
@@ -634,11 +667,13 @@ struct OverviewView: View {
 
     /// Riga compatta di un appuntamento nella Overview: orario, clienti e stato,
     /// più contenuta della riga usata in agenda.
-    private func upcomingRow(_ session: TrainingSession) -> some View {
+    private func upcomingRow(_ session: TrainingSession, index: UpcomingIndex) -> some View {
         var seen = Set<UUID>()
-        let people = participants.filter { $0.sessionID == session.id }
+        let people = (index.participantsBySession[session.id] ?? [])
             .filter { seen.insert($0.clientID).inserted }
-        let conflict = !BusinessDates.conflicts(for: session, sessions: sessions, blocks: blocks).isEmpty
+        let active = session.status == .planned || session.status == .completed
+        let conflict = active && (index.conflictingSessions.contains(session.id)
+            || index.blocks.contains { BusinessDates.overlaps(session.startDate, session.endDate, $0.startDate, $0.endDate) })
         // Se un partecipante usa un pacchetto, mostra l'icona senza prezzo;
         // altrimenti mostra il totale degli addebiti (euro interi, senza centesimi).
         let usesPackage = people.contains { $0.packageID != nil }
@@ -651,7 +686,7 @@ struct OverviewView: View {
                     Text("Cliente non disponibile").font(.subheadline).foregroundStyle(.orange)
                 } else {
                     ForEach(people) { person in
-                        upcomingName(for: person)
+                        upcomingName(for: person, index: index)
                     }
                 }
                 if conflict {
@@ -682,8 +717,8 @@ struct OverviewView: View {
 
     /// Nome sopra e cognome sotto per il partecipante indicato.
     @ViewBuilder
-    private func upcomingName(for person: SessionParticipant) -> some View {
-        if let client = clients.first(where: { $0.id == person.clientID }) {
+    private func upcomingName(for person: SessionParticipant, index: UpcomingIndex) -> some View {
+        if let client = index.clientsByID[person.clientID] {
             VStack(alignment: .leading, spacing: 0) {
                 Text(client.firstName).font(.subheadline)
                 Text(client.lastName).font(.subheadline)

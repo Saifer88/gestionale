@@ -1,0 +1,50 @@
+== BusinessRepositoryTests
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.132 (0.133) seconds
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.132 (0.134) seconds
+== MultipleParticipantsTests
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.086 (0.086) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.086 (0.087) seconds
+== AutomaticIncomeTests
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.098 (0.099) seconds
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.098 (0.100) seconds
+== BusinessIntegrityTests
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.004 (0.006) seconds
+== BusinessArchiveTests
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.212 (0.212) seconds
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.212 (0.213) seconds
+SwiftData.DefaultStore save failed with error: Error Domain=NSCocoaErrorDomain Code=513 "Non è stato possibile salvare il file perché non hai i permessi." UserInfo={NSPersistentStoreOptions={
+== WritePerformanceTests
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.832 (0.832) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.832 (0.833) seconds
+[perf] rescheduleSession: 1 ms
+[perf] saveSession: 1 ms
+[perf] setParticipantPaid: 1 ms
+[perf] setSessionBlack: 0 ms
+[perf] setSessionStatus completed: 2 ms
+== AgendaWeeklyBenchmarkTests
+	 Executed 1 test, with 0 failures (0 unexpected) in 4.463 (4.463) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 4.463 (4.464) seconds
+[bench] ArchiveHealthChecker.fullValidation (background, spostato) | async | min 0.0650 | med 0.0650 | max 0.0651
+[bench] acquisto pacchetto (savePackage) | .archive | min 0.1882 | med 0.1942 | max 0.2073
+[bench] agenda: @Query non filtrate (partecipanti 906, clienti, blocchi, pacchetti, corsi) | - | min 0.0063 | med 0.0064 | max 0.0085
+[bench] agenda: fetch sessioni finestra settimana (49) | - | min 0.0005 | med 0.0005 | max 0.0009
+[bench] agenda: makeSnapshot settimana (37 visibili) | - | min 0.0022 | med 0.0023 | max 0.0024
+[bench] agenda: snapshotKey (conteggi array già caricati) | - | min 0.0000 | med 0.0000 | max 0.0000
+[bench] annulla appuntamento (setSessionStatus cancelled) | .local | min 0.0005 | med 0.0006 | max 0.0008
+[bench] bianco/nero appuntamento (setSessionBlack) | .local | min 0.0001 | med 0.0004 | max 0.0005
+[bench] completa appuntamento (1 partecipante, con pacchetto) | .scoped | min 0.0017 | med 0.0019 | max 0.0022
+[bench] completa appuntamento (1 partecipante, senza pacchetto) | .scoped | min 0.0017 | med 0.0018 | max 0.0026
+[bench] completa appuntamento (2 partecipanti, senza pacchetto) | .scoped | min 0.0021 | med 0.0022 | max 0.0024
+[bench] completa appuntamento (2 partecipanti, uno con pacchetto) | .scoped | min 0.0022 | med 0.0024 | max 0.0024
+[bench] completamento ripetuto (già completato) | .scoped | min 0.0001 | med 0.0001 | max 0.0001
+[bench] crea appuntamento (saveSession) | .local | min 0.0011 | med 0.0012 | max 0.0015
+[bench] crea indisponibilità (saveBlock) | .archive | min 0.1909 | med 0.1945 | max 0.1998
+[bench] dataset generato in 0.19 s: 40 clienti, 30 servizi, 786 appuntamenti (35/settimana), 906 partecipanti, 39 pacchetti, 846 movimenti
+[bench] registra rimborso (recordRefund) | .archive | min 0.2072 | med 0.2106 | max 0.2196
+[bench] segna 10 lezioni pagate (setSessionsPaid) | .local | min 0.0021 | med 0.0021 | max 0.0024
+[bench] segna partecipante pagato (setParticipantPaid) | .local | min 0.0001 | med 0.0007 | max 0.0007
+[bench] sposta appuntamento (rescheduleSession) | .local | min 0.0009 | med 0.0010 | max 0.0012
+[bench] validazione: integrityWarnings (fetch + calcolo) | .archive | min 0.0543 | med 0.0546 | max 0.0560
+[bench] validazione: uncanonicalizedCapture (fetch di tutto l'archivio) | .archive | min 0.0563 | med 0.0567 | max 0.0570
+[bench] validazione: validate(clientIDs:) su archivio già letto | .archive | min 0.0078 | med 0.0080 | max 0.0081

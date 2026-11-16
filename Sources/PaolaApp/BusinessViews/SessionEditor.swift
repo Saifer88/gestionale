@@ -436,7 +436,9 @@ struct SessionEditor: View {
                     paymentMethod: paymentMethod
                 ))
             }
-            _ = try BusinessRepository(context: context).saveSession(draft, allowOverlap: allowOverlap)
+            _ = try PaolaSignpost.interval("agenda.create") {
+                try BusinessRepository(context: context).saveSession(draft, allowOverlap: allowOverlap)
+            }
             dismiss()
         } catch BusinessError.overlap {
             confirmingOverlap = true

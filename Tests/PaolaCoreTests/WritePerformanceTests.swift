@@ -63,11 +63,11 @@ final class WritePerformanceTests: XCTestCase {
             },
             measure("saveSession") { _ = try repository.saveSession(draft) }
         ]
-        // Economic operations still validate the whole archive; this guards against quadratic checks.
+        // Completion uses the scoped validation (cost independent of archive size); this guards against a return to whole-archive checks.
         let completion = try measure("setSessionStatus completed") {
             try repository.setSessionStatus(participant.sessionID, to: .completed)
         }
         for elapsed in local { XCTAssertLessThan(elapsed, 0.8) }
-        XCTAssertLessThan(completion, 6.0)
+        XCTAssertLessThan(completion, 0.3)
     }
 }

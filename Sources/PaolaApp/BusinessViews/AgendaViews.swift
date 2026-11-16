@@ -31,9 +31,12 @@ private struct AgendaSnapshot {
     let clientsByID: [UUID: Client]
     let conflictIDs: Set<UUID>
     let courseOccurrences: [CourseOccurrence]
+    /// Pacchetti acquistati nel periodo mostrato (per i totali bianco/nero).
+    let periodPackages: [LessonPackage]
 
     static let empty = AgendaSnapshot(visibleSessions: [], participantsBySession: [:],
-                                      clientsByID: [:], conflictIDs: [], courseOccurrences: [])
+                                      clientsByID: [:], conflictIDs: [], courseOccurrences: [],
+                                      periodPackages: [])
 
     func people(of session: TrainingSession) -> [SessionParticipant] {
         participantsBySession[session.id] ?? []
@@ -64,22 +67,26 @@ private struct AgendaContent: View {
     @Binding private var period: AgendaPeriod
     @Binding private var selectedDate: Date
     @Query private var sessions: [TrainingSession]
-    @Query private var participants: [SessionParticipant]
-    @Query private var clients: [Client]
+    /// Solo le indisponibilità che toccano la finestra visibile. Partecipanti, clienti,
+    /// pacchetti e corsi non hanno `@Query` illimitate: `makeSnapshot` li legge con fetch
+    /// mirati alla finestra e il risultato resta effimero nello snapshot.
     @Query private var blocks: [Unavailability]
-    @Query private var packages: [LessonPackage]
-    @Query private var courses: [Course]
-    @Query private var courseParticipants: [CourseParticipant]
     @State private var status: SessionStatus?
     @State private var search = ""
     @State private var creatingSession = false
     @State private var operation = BusinessOperation()
     @State private var draggingSessionID: UUID?
+    /// Appuntamenti con completamento in corso: blocca il doppio tocco.
+    @State private var completingSessionIDs = Set<UUID>()
     /// Fascia oraria scelta per creare un appuntamento da una casella del calendario.
     @State private var creationSlot: AgendaCreationSlot?
     /// Indici dell'agenda calcolati una sola volta per cambio input, non a ogni render.
     /// Mostra prima lo stato corrente, poi ricalcola in modo asincrono.
     @State private var snapshot = AgendaSnapshot.empty
+    @State private var snapshotError: Error?
+    /// Incrementato dopo le operazioni che non cambiano i conteggi/`updatedAt` delle
+    /// sessioni (pagato, movimenti economici, chiusura di un editor).
+    @State private var revision = 0
 
     init(period: Binding<AgendaPeriod>, selectedDate: Binding<Date>) {
         _period = period
@@ -91,6 +98,7 @@ private struct AgendaContent: View {
         let upper = interval.end
         _sessions = Query(filter: #Predicate<TrainingSession> { $0.startDate >= lower && $0.startDate < upper },
                           sort: \TrainingSession.startDate)
+        _blocks = Query(filter: #Predicate<Unavailability> { $0.endDate > lower && $0.startDate < upper })
     }
 
     private static func interval(period: AgendaPeriod, date: Date) -> DateInterval {
@@ -103,40 +111,95 @@ private struct AgendaContent: View {
 
     /// Chiave leggera: ricalcola lo snapshot solo quando un input rilevante cambia,
     /// non a ogni render (durante drag, scroll o digitazione nella ricerca).
-    private var snapshotKey: String {
-        "\(period.rawValue)|\(interval.start.timeIntervalSinceReferenceDate)|\(status?.rawValue ?? "-")|\(search)|\(sessions.count)|\(participants.count)|\(courseParticipants.count)|\(packages.count)|\(clients.count)|\(blocks.count)"
+    /// Non conta più partecipanti, clienti o pacchetti dell'intero archivio.
+    private struct SnapshotKey: Equatable {
+        let period: AgendaPeriod
+        let start: Date
+        let status: SessionStatus?
+        let search: String
+        let sessionCount: Int
+        let latestUpdate: Date
+        let blockCount: Int
+        let revision: Int
     }
 
-    private func makeSnapshot() -> AgendaSnapshot {
-        let interval = interval
-        // Appuntamenti visibili prima: riduce il lavoro successivo ai soli coinvolti.
-        let visible = CalendarAppointments.visible(sessions, in: interval)
-        let allBySession = Dictionary(grouping: participants, by: \.sessionID)
-        let filtered = visible.filter { session in
-            guard status == nil || session.status == status else { return false }
-            guard !search.isEmpty else { return true }
-            return session.serviceName.localizedStandardContains(search)
-                || (allBySession[session.id] ?? []).contains { $0.clientName.localizedStandardContains(search) }
+    private var snapshotKey: SnapshotKey {
+        SnapshotKey(period: period, start: interval.start, status: status, search: search,
+                    sessionCount: sessions.count,
+                    latestUpdate: sessions.reduce(Date.distantPast) { max($0, $1.updatedAt) },
+                    blockCount: blocks.count, revision: revision)
+    }
+
+    private func refreshSnapshot() {
+        do {
+            snapshot = try makeSnapshot()
+            snapshotError = nil
+        } catch {
+            snapshotError = error
         }
-        // Partecipanti e clienti solo per gli appuntamenti visibili.
-        let visibleIDs = Set(filtered.map(\.id))
-        var participantsBySession: [UUID: [SessionParticipant]] = [:]
-        var neededClientIDs = Set<UUID>()
-        for (sessionID, people) in allBySession where visibleIDs.contains(sessionID) {
-            participantsBySession[sessionID] = people
-            for p in people { neededClientIDs.insert(p.clientID) }
+    }
+
+    private func makeSnapshot() throws -> AgendaSnapshot {
+        try PaolaSignpost.interval("agenda.makeSnapshot") {
+            let interval = interval
+            // Appuntamenti visibili prima: riduce il lavoro successivo ai soli coinvolti.
+            let visible = CalendarAppointments.visible(sessions, in: interval)
+            let visibleSessionIDs = visible.map(\.id)
+            let fetched = try PaolaSignpost.interval("agenda.fetchWindow") { () throws -> FetchedWindow in
+                let people = visibleSessionIDs.isEmpty ? [] : try context.fetch(FetchDescriptor<SessionParticipant>(
+                    predicate: #Predicate { visibleSessionIDs.contains($0.sessionID) }))
+                return FetchedWindow(participants: people)
+            }
+            let allBySession = Dictionary(grouping: fetched.participants, by: \.sessionID)
+            let filtered = visible.filter { session in
+                guard status == nil || session.status == status else { return false }
+                guard !search.isEmpty else { return true }
+                return session.serviceName.localizedStandardContains(search)
+                    || (allBySession[session.id] ?? []).contains { $0.clientName.localizedStandardContains(search) }
+            }
+            // Partecipanti e clienti solo per gli appuntamenti visibili.
+            let visibleIDs = Set(filtered.map(\.id))
+            var participantsBySession: [UUID: [SessionParticipant]] = [:]
+            var neededClientIDs = Set<UUID>()
+            for (sessionID, people) in allBySession where visibleIDs.contains(sessionID) {
+                participantsBySession[sessionID] = people
+                for p in people { neededClientIDs.insert(p.clientID) }
+            }
+            let clientIDs = Array(neededClientIDs)
+            let lower = interval.start, upper = interval.end
+            let (clients, periodPackages, occurrences) = try PaolaSignpost.interval("agenda.fetchWindow") {
+                () throws -> ([Client], [LessonPackage], [CourseOccurrence]) in
+                let clients = clientIDs.isEmpty ? [] : try context.fetch(FetchDescriptor<Client>(
+                    predicate: #Predicate { clientIDs.contains($0.id) }))
+                let periodPackages = try context.fetch(FetchDescriptor<LessonPackage>(
+                    predicate: #Predicate { $0.purchasedOn >= lower && $0.purchasedOn < upper }))
+                return (clients, periodPackages, try courseOccurrences(in: interval))
+            }
+            var clientsByID: [UUID: Client] = [:]
+            for client in clients { clientsByID[client.id] = client }
+            return AgendaSnapshot(
+                visibleSessions: filtered,
+                participantsBySession: participantsBySession,
+                clientsByID: clientsByID,
+                conflictIDs: AgendaSnapshot.conflicts(in: sessions),
+                courseOccurrences: occurrences,
+                periodPackages: periodPackages)
         }
-        var clientsByID: [UUID: Client] = [:]
-        for client in clients where neededClientIDs.contains(client.id) {
-            clientsByID[client.id] = client
-        }
-        return AgendaSnapshot(
-            visibleSessions: filtered,
-            participantsBySession: participantsBySession,
-            clientsByID: clientsByID,
-            conflictIDs: AgendaSnapshot.conflicts(in: sessions),
-            courseOccurrences: CourseOccurrences.expand(courses: courses, participants: courseParticipants,
-                                                        packages: packages, in: interval))
+    }
+
+    private struct FetchedWindow { let participants: [SessionParticipant] }
+
+    /// Corsi attivi, partecipanti dei soli corsi attivi e pacchetti dei soli partecipanti corso.
+    private func courseOccurrences(in interval: DateInterval) throws -> [CourseOccurrence] {
+        let courses = try context.fetch(FetchDescriptor<Course>(predicate: #Predicate { $0.weekdaysMask != 0 }))
+        guard !courses.isEmpty else { return [] }
+        let courseIDs = courses.map(\.id)
+        let people = try context.fetch(FetchDescriptor<CourseParticipant>(
+            predicate: #Predicate { courseIDs.contains($0.courseID) }))
+        let packageIDs = people.compactMap(\.packageID)
+        let packages = packageIDs.isEmpty ? [] : try context.fetch(FetchDescriptor<LessonPackage>(
+            predicate: #Predicate { packageIDs.contains($0.id) }))
+        return CourseOccurrences.expand(courses: courses, participants: people, packages: packages, in: interval)
     }
 
     private var days: [Date] {
@@ -170,8 +233,7 @@ private struct AgendaContent: View {
 
     var body: some View {
         Group {
-            if let error = _sessions.fetchError ?? _participants.fetchError ?? _clients.fetchError
-                ?? _courses.fetchError ?? _courseParticipants.fetchError {
+            if let error = _sessions.fetchError ?? _blocks.fetchError ?? snapshotError {
                 ArchiveReadErrorView(error: error)
             } else {
                 agenda(snapshot)
@@ -180,8 +242,11 @@ private struct AgendaContent: View {
         .sectionTitle(.agenda)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agenda.screen")
-        .onAppear { snapshot = makeSnapshot() }
-        .onChange(of: snapshotKey) { _, _ in snapshot = makeSnapshot() }
+        .onAppear { refreshSnapshot() }
+        .onChange(of: snapshotKey) { _, _ in refreshSnapshot() }
+        .onReceive(NotificationCenter.default.publisher(for: .paolaEconomicDataDidChange)) { _ in revision += 1 }
+        .onChange(of: creatingSession) { _, isPresented in if !isPresented { revision += 1 } }
+        .onChange(of: creationSlot?.id) { _, slot in if slot == nil { revision += 1 } }
         .searchable(text: $search, prompt: "Cliente o servizio")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -305,7 +370,7 @@ private struct AgendaContent: View {
                 totals.add(participant.priceCents, black: session.isBlack)
             }
         }
-        for package in packages where interval.start <= package.purchasedOn && package.purchasedOn < interval.end {
+        for package in snapshot.periodPackages {
             totals.add(package.priceCents, black: package.isBlack)
         }
         return totals
@@ -570,13 +635,36 @@ private struct AgendaContent: View {
                 .accessibilityLabel("Completato")
         } 
         if session.status == .planned {
-            Button {
-                try? BusinessRepository(context: context).setSessionStatus(session.id, to: .completed)
-            } label: {
-                Image(systemName: "checkmark.circle.fill")
-                .font(.callout)
-                .foregroundStyle(.yellow)
+            if completingSessionIDs.contains(session.id) {
+                ProgressView().controlSize(.small)
+                    .accessibilityLabel("Completamento in corso")
+            } else {
+                Button {
+                    complete(session)
+                } label: {
+                    Image(systemName: "checkmark.circle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.yellow)
+                }
             }
+        }
+    }
+
+    /// Completa l'appuntamento dopo aver mostrato lo stato "in corso", così l'interfaccia
+    /// risponde subito al tocco. L'operazione resta idempotente; gli errori sono mostrati.
+    private func complete(_ session: TrainingSession) {
+        let id = session.id
+        guard completingSessionIDs.insert(id).inserted else { return }
+        Task { @MainActor in
+            // Lascia a SwiftUI il tempo di mostrare l'indicatore prima del lavoro sincrono.
+            try? await Task.sleep(for: .milliseconds(50))
+            do {
+                try PaolaSignpost.interval("agenda.complete") {
+                    try BusinessRepository(context: context).setSessionStatus(id, to: .completed)
+                }
+            } catch { operation.capture(error) }
+            completingSessionIDs.remove(id)
+            revision += 1
         }
     }
 
@@ -620,20 +708,32 @@ private struct AgendaContent: View {
     /// Conferma un appuntamento provvisorio rendendolo programmato.
     private func confirmProvisional(_ session: TrainingSession) {
         guard session.status == .provisional else { return }
-        do { try BusinessRepository(context: context).setSessionStatus(session.id, to: .planned) }
-        catch { operation.capture(error) }
+        do {
+            try PaolaSignpost.interval("agenda.setStatus") {
+                try BusinessRepository(context: context).setSessionStatus(session.id, to: .planned)
+            }
+        } catch { operation.capture(error) }
+        revision += 1
     }
 
     /// Attiva/disattiva il contrassegno "pagato" del partecipante.
     private func togglePaid(_ participant: SessionParticipant) {
-        do { try BusinessRepository(context: context).setParticipantPaid(participant.id, !participant.isPaid) }
-        catch { operation.capture(error) }
+        do {
+            try PaolaSignpost.interval("agenda.togglePaid") {
+                try BusinessRepository(context: context).setParticipantPaid(participant.id, !participant.isPaid)
+            }
+        } catch { operation.capture(error) }
+        revision += 1
     }
 
     /// Commuta la ripartizione contabile bianco/nero dell'appuntamento.
     private func toggleAccounting(_ session: TrainingSession) {
-        do { try BusinessRepository(context: context).setSessionBlack(session.id, !session.isBlack) }
-        catch { operation.capture(error) }
+        do {
+            try PaolaSignpost.interval("agenda.toggleBlack") {
+                try BusinessRepository(context: context).setSessionBlack(session.id, !session.isBlack)
+            }
+        } catch { operation.capture(error) }
+        revision += 1
     }
 
     // MARK: - Drag & drop
@@ -732,7 +832,9 @@ private struct AgendaContent: View {
         guard let dragged = session(sessionID) else { return }
         if dragged.startDate == row.start { return }
         let repository = BusinessRepository(context: context)
+        defer { revision += 1 }
         do {
+            try PaolaSignpost.interval("agenda.reschedule") {
             if let occupantID = row.occupantID, occupantID != sessionID,
                let occupant = session(occupantID) {
                 // Scambio di posto: i due appuntamenti si scambiano l'orario di inizio.
@@ -744,6 +846,7 @@ private struct AgendaContent: View {
                 // Spostamento su fascia libera. Gli overlap residui non bloccano lo
                 // spostamento manuale (le fasce occupate portano allo scambio).
                 try repository.rescheduleSession(sessionID, to: row.start, allowOverlap: true)
+            }
             }
         } catch { operation.capture(error) }
     }
@@ -958,7 +1061,11 @@ struct SessionDetailView: View {
 
     private func updateStatus(_ status: SessionStatus) {
         pendingStatus = nil
-        do { try BusinessRepository(context: context).setSessionStatus(session.id, to: status) }
+        do {
+            try PaolaSignpost.interval("agenda.setStatus") {
+                try BusinessRepository(context: context).setSessionStatus(session.id, to: status)
+            }
+        }
         catch { operation.capture(error) }
     }
 }

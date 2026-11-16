@@ -39,11 +39,23 @@ enum ReminderManager {
 }
 
 struct ReminderSchedulerView: View {
-    @Query(sort: \TrainingSession.startDate) private var sessions: [TrainingSession]
+    @Query private var sessions: [TrainingSession]
     @AppStorage("reminders.enabled") private var enabled = false
     @AppStorage("reminders.minutesBefore") private var minutesBefore = 15
     @State private var errorMessage: String?
     @Environment(\.scenePhase) private var scenePhase
+
+    /// Solo gli appuntamenti programmati futuri, in ordine di data. Il limite supera i 60
+    /// promemoria pianificati per coprire quelli già scaduti per l'anticipo scelto.
+    init() {
+        let now = Date()
+        let planned = SessionStatus.planned.rawValue
+        var descriptor = FetchDescriptor<TrainingSession>(
+            predicate: #Predicate { $0.statusRaw == planned && $0.startDate > now },
+            sortBy: [SortDescriptor(\.startDate)])
+        descriptor.fetchLimit = 100
+        _sessions = Query(descriptor)
+    }
 
     private var signature: String {
         "\(enabled)-\(minutesBefore)-\(scenePhase == .active)-" +

@@ -18,7 +18,7 @@ public final class BusinessRepository {
 
     @discardableResult
     public func saveService(_ draft: ServiceDraft) throws -> UUID {
-        try transact { writer in
+        try transact("saveService") { writer in
             let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { throw BusinessError.invalidInput("Inserire il nome del servizio.") }
             try BusinessRules.duration(draft.durationMinutes)
@@ -70,7 +70,7 @@ public final class BusinessRepository {
     }
 
     public func deleteService(_ id: UUID) throws {
-        try transact { writer in
+        try transact("deleteService") { writer in
             let service = try find(id, in: writer, type: TrainingService.self, name: "Servizio")
             // Lo storico degli appuntamenti è congelato: se un appuntamento (in qualsiasi
             // stato, inclusi annullati e assenze conservati nello storico) referenzia il
@@ -97,7 +97,7 @@ public final class BusinessRepository {
     @discardableResult
     public func saveSession(_ draft: SessionDraft, allowOverlap: Bool = false) throws -> UUID {
         // Local checks below cover every archive rule for a non-completed session.
-        try transact(validation: .local) { writer in
+        try transact("saveSession", validation: .local) { writer in
             try BusinessRules.date(draft.startDate); try BusinessRules.duration(draft.durationMinutes)
             let endDate = draft.startDate.addingTimeInterval(Double(draft.durationMinutes) * 60)
             try BusinessRules.date(endDate)
@@ -200,7 +200,7 @@ public final class BusinessRepository {
     }
 
     public func setSessionStatus(_ id: UUID, to status: SessionStatus, completionDate: Date = Date()) throws {
-        try transact(validation: status == .completed ? .archive : .local) { writer in
+        try transact("setSessionStatus", validation: status == .completed ? .scoped([id]) : .local) { writer in
             let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
             if session.status == status { return }
             guard session.status != .completed else { throw BusinessError.completedSessionLocked }
@@ -209,7 +209,7 @@ public final class BusinessRepository {
             }
             if status == .completed {
                 try BusinessRules.date(completionDate)
-                let participants = try writer.fetch(FetchDescriptor<SessionParticipant>()).filter { $0.sessionID == id }
+                let participants = try fetchParticipants(ofSession: id, in: writer)
                 guard !participants.isEmpty,
                       Set(participants.map(\.clientID)).count == participants.count else {
                     throw BusinessError.inconsistentData("Partecipanti della lezione non validi.")
@@ -257,10 +257,9 @@ public final class BusinessRepository {
     /// l'eliminazione è un'azione esplicita dell'utente che disfa l'intera prestazione
     /// (non una modifica retroattiva silenziosa dei valori).
     public func deleteSession(_ id: UUID) throws {
-        try transact { writer in
+        try transact("deleteSession") { writer in
             let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
-            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>())
-                .filter { $0.sessionID == id }
+            let participants = try fetchParticipants(ofSession: id, in: writer)
 
             // sourceKey dei movimenti generati dal completamento, per ciascun partecipante.
             var chargeSources = Set<String>()      // addebito lezione singola
@@ -272,40 +271,42 @@ public final class BusinessRepository {
                 feeSources.insert(Expense.sessionFeeSourceKey(sessionID: id, clientID: participant.clientID).lowercased())
             }
 
-            let allEntries = try writer.fetch(FetchDescriptor<LedgerEntry>())
             // Movimenti diretti (charge/payment) generati dalla sessione.
-            let directIDs = Set(allEntries.filter {
-                let key = $0.sourceKey.lowercased()
-                return chargeSources.contains(key) || incomeSources.contains(key)
-            }.map(\.id))
+            let directKeys = Array(chargeSources.union(incomeSources))
+            let directEntries = try fetchEntries(withSourceKeys: directKeys, in: writer)
+            let directIDs = Set(directEntries.map(\.id))
             // Storni (refund/credit) che referenziano quei movimenti: senza l'origine
             // non hanno più significato, quindi vanno rimossi anch'essi.
-            for entry in allEntries {
-                let key = entry.sourceKey.lowercased()
-                let isDirect = chargeSources.contains(key) || incomeSources.contains(key)
-                let isAdjustmentOfDirect = entry.originalEntryID.map(directIDs.contains) == true
-                if isDirect || isAdjustmentOfDirect {
-                    writer.delete(entry)
+            var toDelete = Dictionary(uniqueKeysWithValues: directEntries.map { ($0.id, $0) })
+            if !directIDs.isEmpty {
+                for entry in try writer.fetch(FetchDescriptor<LedgerEntry>(
+                    predicate: #Predicate { $0.originalEntryID != nil }))
+                where entry.originalEntryID.map(directIDs.contains) == true {
+                    toDelete[entry.id] = entry
                 }
             }
+            for entry in toDelete.values { writer.delete(entry) }
 
             // Consumi di pacchetto della sessione.
-            for use in try writer.fetch(FetchDescriptor<PackageUse>()) where use.sessionID == id {
+            for use in try writer.fetch(FetchDescriptor<PackageUse>(
+                predicate: #Predicate { $0.sessionID == id })) {
                 writer.delete(use)
             }
 
             // Commissioni automatiche della sessione (bypassa il blocco manuale: qui
             // stiamo eliminando l'origine, che è lo scenario ammesso).
-            for expense in try writer.fetch(FetchDescriptor<Expense>())
-            where feeSources.contains(expense.sourceKey.lowercased()) {
+            for expense in try fetchExpenses(withSourceKeys: Array(feeSources), in: writer) {
                 writer.delete(expense)
             }
 
-            // Fatture collegate all'appuntamento (documenti informativi).
-            for participant in participants {
-                let invoiceSource = Invoice.sessionSourceKey(sessionID: id, clientID: participant.clientID).lowercased()
-                for invoice in try writer.fetch(FetchDescriptor<Invoice>())
-                where invoice.sourceKey.lowercased() == invoiceSource {
+            // Fatture collegate all'appuntamento (documenti informativi): un solo fetch
+            // per tutti i partecipanti.
+            let invoiceSources = participants.map {
+                Invoice.sessionSourceKey(sessionID: id, clientID: $0.clientID).lowercased()
+            }
+            if !invoiceSources.isEmpty {
+                for invoice in try writer.fetch(FetchDescriptor<Invoice>(
+                    predicate: #Predicate { invoiceSources.contains($0.sourceKey) })) {
                     writer.delete(invoice)
                 }
             }
@@ -322,7 +323,7 @@ public final class BusinessRepository {
     /// - La sovrapposizione è bloccante solo per gli appuntamenti programmati; per i
     ///   provvisori è ammessa (prenotazione tentativa). Con `allowOverlap` si forza.
     public func rescheduleSession(_ id: UUID, to startDate: Date, allowOverlap: Bool = false) throws {
-        try transact(validation: .local) { writer in
+        try transact("rescheduleSession", validation: .local) { writer in
             let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
             guard session.status != .completed else { throw BusinessError.completedSessionLocked }
             try BusinessRules.date(startDate)
@@ -349,7 +350,7 @@ public final class BusinessRepository {
     /// né modifica movimenti economici: è solo un promemoria per il trainer. Senza
     /// effetto sui partecipanti con pacchetto (il pagamento è gestito dal pacchetto).
     public func setParticipantPaid(_ id: UUID, _ paid: Bool) throws {
-        try transact(validation: .local) { writer in
+        try transact("setParticipantPaid", validation: .local) { writer in
             let participant = try find(id, in: writer, type: SessionParticipant.self, name: "Partecipante")
             guard participant.packageID == nil else { return }
             if participant.isPaid == paid { return }
@@ -366,11 +367,12 @@ public final class BusinessRepository {
     /// altri partecipanti eventualmente presenti nelle stesse sessioni.
     public func setSessionsPaid(_ sessionIDs: [UUID], clientID: UUID, _ paid: Bool) throws {
         guard !sessionIDs.isEmpty else { return }
-        try transact(validation: .local) { writer in
+        try transact("setSessionsPaid", validation: .local) { writer in
             let now = Date()
             let ids = Set(sessionIDs)
-            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>())
-                .filter { ids.contains($0.sessionID) && $0.clientID == clientID && $0.packageID == nil }
+            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>(
+                predicate: #Predicate { ids.contains($0.sessionID) && $0.clientID == clientID }))
+                .filter { $0.packageID == nil }
             for participant in participants where participant.isPaid != paid {
                 participant.isPaid = paid
             }
@@ -384,7 +386,7 @@ public final class BusinessRepository {
 
     /// Imposta la ripartizione contabile "bianco/nero" (true = nero) di un appuntamento.
     public func setSessionBlack(_ id: UUID, _ black: Bool) throws {
-        try transact(validation: .local) { writer in
+        try transact("setSessionBlack", validation: .local) { writer in
             let session = try find(id, in: writer, type: TrainingSession.self, name: "Lezione")
             if session.isBlack == black { return }
             session.isBlack = black
@@ -394,7 +396,7 @@ public final class BusinessRepository {
 
     /// Imposta la ripartizione contabile "bianco/nero" (true = nero) di un pacchetto.
     public func setPackageBlack(_ id: UUID, _ black: Bool) throws {
-        try transact(validation: .local) { writer in
+        try transact("setPackageBlack", validation: .local) { writer in
             let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
             if package.isBlack == black { return }
             package.isBlack = black
@@ -406,7 +408,7 @@ public final class BusinessRepository {
     /// Crea o aggiorna una spesa inserita a mano (una tantum o ricorrente mensile).
     @discardableResult
     public func saveExpense(_ draft: ExpenseDraft) throws -> UUID {
-        try transact { writer in
+        try transact("saveExpense") { writer in
             let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { throw BusinessError.invalidInput("Inserire il nome della spesa.") }
             try BusinessRules.date(draft.date); try BusinessRules.amount(draft.amountCents)
@@ -428,7 +430,7 @@ public final class BusinessRepository {
     }
 
     public func deleteExpense(_ id: UUID) throws {
-        try transact { writer in
+        try transact("deleteExpense") { writer in
             let expense = try find(id, in: writer, type: Expense.self, name: "Spesa")
             // Le commissioni automatiche (Stripe/carta) sono idempotenti rispetto
             // all'incasso di origine: si eliminano solo modificando o eliminando
@@ -450,14 +452,13 @@ public final class BusinessRepository {
         guard TransactionFee.applies(to: method), priceCents > 0,
               let fee = TransactionFee.cents(for: priceCents, method: method), fee > 0 else { return }
         let key = sourceKey.lowercased()
-        let existing = try writer.fetch(FetchDescriptor<Expense>())
-        if existing.contains(where: { $0.sourceKey.lowercased() == key }) { return }
+        if try !fetchExpenses(withSourceKeys: [key], in: writer).isEmpty { return }
         writer.insert(Expense(name: name, date: date, amountCents: fee, kind: .oneTime, sourceKey: sourceKey))
     }
 
     @discardableResult
     public func savePackage(_ draft: PackageDraft) throws -> UUID {
-        try transact { writer in
+        try transact("savePackage") { writer in
             try BusinessRules.date(draft.purchasedOn); try BusinessRules.amount(draft.priceCents)
             // Scadenza: per un pacchetto a tempo è calcolata dalla durata in mesi (1/3/6)
             // a partire dall'acquisto; per uno a lezioni resta quella eventualmente scelta.
@@ -488,7 +489,8 @@ public final class BusinessRepository {
                 // Modifica di un pacchetto esistente. Il cliente non cambia (i movimenti
                 // economici restano associati allo stesso cliente).
                 let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
-                let uses = try writer.fetch(FetchDescriptor<PackageUse>())
+                let uses = try writer.fetch(FetchDescriptor<PackageUse>(
+                    predicate: #Predicate { $0.packageID == id }))
                 if draft.kind == .lessons {
                     let used = BusinessReports.used(package: package, uses: uses)
                     guard effectiveCapacity >= used else { throw BusinessError.packageCapacityBelowUsage }
@@ -504,10 +506,11 @@ public final class BusinessRepository {
                 if let isBlack = draft.isBlack { package.isBlack = isBlack }
 
                 // Allinea i movimenti economici collegati (addebito e incasso) a prezzo/data/metodo.
-                let entries = try writer.fetch(FetchDescriptor<LedgerEntry>())
                 let chargeSource = BusinessRules.packageSource(package.id)
                 let incomeSource = BusinessRules.packageIncomeSource(package.id)
-                for entry in entries where entry.originalEntryID == nil {
+                let linkedEntries = try fetchEntries(
+                    withSourceKeys: [chargeSource.lowercased(), incomeSource.lowercased()], in: writer)
+                for entry in linkedEntries where entry.originalEntryID == nil {
                     let key = entry.sourceKey.lowercased()
                     if key == chargeSource.lowercased() {
                         entry.date = draft.purchasedOn
@@ -522,8 +525,7 @@ public final class BusinessRepository {
                 }
                 // Riconcilia la spesa automatica (commissione) col nuovo metodo/prezzo.
                 let feeKey = Expense.packageFeeSourceKey(package.id).lowercased()
-                let feeExpenses = try writer.fetch(FetchDescriptor<Expense>())
-                    .filter { $0.sourceKey.lowercased() == feeKey }
+                let feeExpenses = try fetchExpenses(withSourceKeys: [feeKey], in: writer)
                 let expectedFee = draft.priceCents > 0
                     ? TransactionFee.cents(for: draft.priceCents, method: draft.paymentMethod) : nil
                 if let expectedFee, expectedFee > 0 {
@@ -575,21 +577,20 @@ public final class BusinessRepository {
     /// Consentito solo se nessuna lezione del pacchetto è stata utilizzata, per non
     /// alterare lo storico delle sedute completate.
     public func deletePackage(_ id: UUID) throws {
-        try transact { writer in
+        try transact("deletePackage") { writer in
             let package = try find(id, in: writer, type: LessonPackage.self, name: "Pacchetto")
-            let uses = try writer.fetch(FetchDescriptor<PackageUse>())
-            guard !uses.contains(where: { $0.packageID == id }) else {
+            var useProbe = FetchDescriptor<PackageUse>(predicate: #Predicate { $0.packageID == id })
+            useProbe.fetchLimit = 1
+            guard try writer.fetch(useProbe).isEmpty else {
                 throw BusinessError.packageInUse
             }
             let chargeSource = BusinessRules.packageSource(id).lowercased()
             let incomeSource = BusinessRules.packageIncomeSource(id).lowercased()
-            for entry in try writer.fetch(FetchDescriptor<LedgerEntry>())
-            where entry.sourceKey.lowercased() == chargeSource || entry.sourceKey.lowercased() == incomeSource {
+            for entry in try fetchEntries(withSourceKeys: [chargeSource, incomeSource], in: writer) {
                 writer.delete(entry)
             }
             let feeKey = Expense.packageFeeSourceKey(id).lowercased()
-            for expense in try writer.fetch(FetchDescriptor<Expense>())
-            where expense.sourceKey.lowercased() == feeKey {
+            for expense in try fetchExpenses(withSourceKeys: [feeKey], in: writer) {
                 writer.delete(expense)
             }
             writer.delete(package)
@@ -608,13 +609,13 @@ public final class BusinessRepository {
     /// fatturazione sull'appuntamento. Non altera i movimenti economici.
     @discardableResult
     public func createInvoiceForSession(sessionID: UUID, clientID: UUID, issueDate: Date) throws -> UUID {
-        try transact { writer in
+        try transact("createInvoiceForSession") { writer in
             try BusinessRules.date(issueDate)
             // La fattura può essere emessa in qualsiasi stato dell'appuntamento
             // (programmato, completato, annullato, assenza).
             let session = try find(sessionID, in: writer, type: TrainingSession.self, name: "Lezione")
-            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>())
-                .filter { $0.sessionID == sessionID && $0.clientID == clientID }
+            let participants = try writer.fetch(FetchDescriptor<SessionParticipant>(
+                predicate: #Predicate { $0.sessionID == sessionID && $0.clientID == clientID }))
             guard let participant = participants.first else {
                 throw BusinessError.notFound("Partecipante")
             }
@@ -646,7 +647,7 @@ public final class BusinessRepository {
     /// Richiede: metodo ammesso, importo > 0, nessuna fattura già presente (idempotenza).
     @discardableResult
     public func createInvoiceForPackage(packageID: UUID, issueDate: Date) throws -> UUID {
-        try transact { writer in
+        try transact("createInvoiceForPackage") { writer in
             try BusinessRules.date(issueDate)
             let package = try find(packageID, in: writer, type: LessonPackage.self, name: "Pacchetto")
             guard Self.invoiceableMethods.contains(package.paymentMethod) else {
@@ -671,8 +672,9 @@ public final class BusinessRepository {
 
     private func ensureNotAlreadyInvoiced(_ sourceKey: String, in writer: ModelContext) throws {
         let key = sourceKey.lowercased()
-        let existing = try writer.fetch(FetchDescriptor<Invoice>())
-        if existing.contains(where: { $0.sourceKey.lowercased() == key }) {
+        let existing = try writer.fetch(FetchDescriptor<Invoice>(
+            predicate: #Predicate { $0.sourceKey == key }))
+        if !existing.isEmpty {
             throw BusinessError.alreadyInvoiced
         }
     }
@@ -694,7 +696,7 @@ public final class BusinessRepository {
 
     @discardableResult
     public func saveBlock(_ draft: BlockDraft, allowOverlap: Bool = false) throws -> UUID {
-        try transact { writer in
+        try transact("saveBlock") { writer in
             try BusinessRules.date(draft.startDate); try BusinessRules.date(draft.endDate)
             let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard draft.endDate > draft.startDate, !title.isEmpty else {
@@ -714,7 +716,7 @@ public final class BusinessRepository {
     }
 
     public func deleteBlock(_ id: UUID) throws {
-        try transact { writer in
+        try transact("deleteBlock") { writer in
             writer.delete(try find(id, in: writer, type: Unavailability.self, name: "Indisponibilità"))
         }
     }
@@ -726,7 +728,7 @@ public final class BusinessRepository {
     /// movimenti economici: la partecipazione è coperta dal pacchetto a tempo.
     @discardableResult
     public func saveCourse(_ draft: CourseDraft) throws -> UUID {
-        try transact { writer in
+        try transact("saveCourse") { writer in
             let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { throw BusinessError.invalidInput("Inserire il titolo del corso.") }
             guard !draft.weekdays.isEmpty else { throw BusinessError.invalidInput("Seleziona almeno un giorno della settimana.") }
@@ -782,7 +784,7 @@ public final class BusinessRepository {
 
     /// Elimina un corso e i suoi partecipanti. Non tocca movimenti economici.
     public func deleteCourse(_ id: UUID) throws {
-        try transact { writer in
+        try transact("deleteCourse") { writer in
             let course = try find(id, in: writer, type: Course.self, name: "Corso")
             for participant in try writer.fetch(FetchDescriptor<CourseParticipant>()) where participant.courseID == id {
                 writer.delete(participant)
@@ -793,7 +795,7 @@ public final class BusinessRepository {
 
     private func recordAdjustment(originalID: UUID, kind: LedgerKind, amountCents: Int64,
                                   date: Date, notes: String) throws -> UUID {
-        try transact { writer in
+        try transact("recordAdjustment") { writer in
             try BusinessRules.amount(amountCents, positive: true); try BusinessRules.date(date)
             let original = try find(originalID, in: writer, type: LedgerEntry.self, name: "Movimento")
             guard original.kind == (kind == .refund ? .payment : .charge), date >= original.date else {
@@ -821,7 +823,9 @@ public final class BusinessRepository {
         try BusinessArchive().checkExpiry(package.expiresOn, sessionDate: date)
         // I pacchetti a tempo sono illimitati entro la validità: solo la scadenza conta.
         guard package.kind != .timed else { return }
-        let uses = try writer.fetch(FetchDescriptor<PackageUse>())
+        let packageID = package.id
+        let uses = try writer.fetch(FetchDescriptor<PackageUse>(
+            predicate: #Predicate { $0.packageID == packageID }))
         guard BusinessReports.remaining(package: package, uses: uses) > 0 else { throw BusinessError.packageExhausted }
     }
 
@@ -843,11 +847,28 @@ public final class BusinessRepository {
     }
 
     private func client(_ id: UUID, in writer: ModelContext, requireActive: Bool = false) throws -> Client {
-        guard let client = try writer.fetch(FetchDescriptor<Client>()).first(where: { $0.id == id }) else {
+        var descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        guard let client = try writer.fetch(descriptor).first else {
             throw BusinessError.notFound("Cliente")
         }
         if requireActive && client.isArchived { throw BusinessError.invalidInput("Il cliente selezionato è archiviato.") }
         return client
+    }
+
+    private func fetchParticipants(ofSession id: UUID, in writer: ModelContext) throws -> [SessionParticipant] {
+        try writer.fetch(FetchDescriptor<SessionParticipant>(predicate: #Predicate { $0.sessionID == id }))
+    }
+
+    /// Source keys are always generated lowercase, so the keys passed here must be lowercase.
+    private func fetchEntries(withSourceKeys keys: [String], in writer: ModelContext) throws -> [LedgerEntry] {
+        guard !keys.isEmpty else { return [] }
+        return try writer.fetch(FetchDescriptor<LedgerEntry>(predicate: #Predicate { keys.contains($0.sourceKey) }))
+    }
+
+    private func fetchExpenses(withSourceKeys keys: [String], in writer: ModelContext) throws -> [Expense] {
+        guard !keys.isEmpty else { return [] }
+        return try writer.fetch(FetchDescriptor<Expense>(predicate: #Predicate { keys.contains($0.sourceKey) }))
     }
 
     private func find<T: PersistentModel>(_ id: UUID, in writer: ModelContext, type: T.Type, name: String) throws -> T {
@@ -877,56 +898,109 @@ public final class BusinessRepository {
         case archive
         /// The operation's own checks are enough: it touches no ledger, use or package record.
         case local
+        /// Post-write check limited to the listed sessions, their participants, clients,
+        /// packages, ledger entries, uses and fee expenses (see `ScopedValidation`).
+        /// The whole-archive health is checked elsewhere (`ArchiveHealthChecker`).
+        case scoped(Set<UUID>)
     }
 
-    private func transact<T>(validation: Validation = .archive, _ operation: (ModelContext) throws -> T) throws -> T {
-        // Keep failed saves and SwiftData rollback invalidation away from observed UI instances.
-        let writer = ModelContext(context.container)
-        writer.autosaveEnabled = false
-        guard validation == .archive else {
-            let result = try operation(writer)
-            guard writer.hasChanges else { return result }
-            try save(writer)
-            return result
+    /// Test seam: runs the whole-archive validation in place of the scoped one.
+    internal var forceFullValidation = false
+
+    private func transact<T>(_ name: StaticString, validation: Validation = .archive,
+                             _ operation: (ModelContext) throws -> T) throws -> T {
+        try PaolaSignpost.interval(name) { () throws -> T in
+            // Keep failed saves and SwiftData rollback invalidation away from observed UI instances.
+            let writer = ModelContext(context.container)
+            writer.autosaveEnabled = false
+            var validation = validation
+            if forceFullValidation, case .scoped = validation { validation = .archive }
+            switch validation {
+            case .local:
+                let result = try PaolaSignpost.interval("operation") { try operation(writer) }
+                guard writer.hasChanges else { return result }
+                try save(writer)
+                return result
+            case .scoped(let sessionIDs):
+                let result = try PaolaSignpost.interval("operation") { try operation(writer) }
+                guard writer.hasChanges else { return result }
+                try PaolaSignpost.interval("validation.post") {
+                    try ScopedValidation.validate(sessionIDs: sessionIDs, in: writer)
+                }
+                try save(writer)
+                return result
+            case .archive:
+                let clientIDs: Set<UUID> = try PaolaSignpost.interval("validation.pre") { () throws -> Set<UUID> in
+                    let clients = try writer.fetch(FetchDescriptor<Client>())
+                    let clientIDs = Set(clients.map(\.id))
+                    guard clientIDs.count == clients.count else { throw BusinessError.inconsistentData("Clienti duplicati.") }
+                    let warnings = BusinessReports.integrityWarnings(
+                        entries: try writer.fetch(FetchDescriptor<LedgerEntry>()),
+                        packages: try writer.fetch(FetchDescriptor<LessonPackage>()),
+                        uses: try writer.fetch(FetchDescriptor<PackageUse>()))
+                    guard warnings.isEmpty else {
+                        throw BusinessError.inconsistentData("Operazione sospesa per dati incoerenti. " + warnings.joined(separator: " "))
+                    }
+                    try BusinessArchive.uncanonicalizedCapture(context: writer).validate(clientIDs: clientIDs)
+                    return clientIDs
+                }
+                let result = try PaolaSignpost.interval("operation") { try operation(writer) }
+                guard writer.hasChanges else { return result }
+                try PaolaSignpost.interval("validation.post") {
+                    try BusinessArchive.uncanonicalizedCapture(context: writer).validate(clientIDs: clientIDs)
+                }
+                try save(writer)
+                return result
+            }
         }
-        let clients = try writer.fetch(FetchDescriptor<Client>())
-        let clientIDs = Set(clients.map(\.id))
-        guard clientIDs.count == clients.count else { throw BusinessError.inconsistentData("Clienti duplicati.") }
-        let warnings = BusinessReports.integrityWarnings(
-            entries: try writer.fetch(FetchDescriptor<LedgerEntry>()),
-            packages: try writer.fetch(FetchDescriptor<LessonPackage>()),
-            uses: try writer.fetch(FetchDescriptor<PackageUse>()))
-        guard warnings.isEmpty else {
-            throw BusinessError.inconsistentData("Operazione sospesa per dati incoerenti. " + warnings.joined(separator: " "))
-        }
-        try BusinessArchive.uncanonicalizedCapture(context: writer).validate(clientIDs: clientIDs)
-        let result = try operation(writer)
-        guard writer.hasChanges else { return result }
-        try BusinessArchive.uncanonicalizedCapture(context: writer).validate(clientIDs: clientIDs)
-        try save(writer)
-        return result
     }
 
     private func save(_ writer: ModelContext) throws {
-        let touched = Set((writer.insertedModelsArray + writer.changedModelsArray + writer.deletedModelsArray)
-            .map { ObjectIdentifier(type(of: $0)) })
-        try saveChanges(writer)
-        // Only entity types changed by this write need to be refreshed in the UI context.
+        let inserted = writer.insertedModelsArray
+        let changed = writer.changedModelsArray
+        let deleted = writer.deletedModelsArray
+        let deletedTypes = Set(deleted.map { ObjectIdentifier(type(of: $0)) })
+        let touchesEconomy = (inserted + changed + deleted).contains { model in
+            model is LedgerEntry || model is PackageUse || model is LessonPackage || model is Expense
+        }
+        try PaolaSignpost.interval("save") { try saveChanges(writer) }
+        // Only entities written by this operation are re-read in the UI context: inserted and
+        // changed ones by identifier, a full re-read of the type only when rows were deleted
+        // (deleted identifiers can no longer be fetched).
+        let writtenIDs = Dictionary(grouping: inserted + changed, by: { ObjectIdentifier(type(of: $0)) })
+            .mapValues { $0.map(\.persistentModelID) }
         func refresh<T: PersistentModel>(_ type: T.Type) throws {
-            if touched.contains(ObjectIdentifier(type)) { _ = try context.fetch(FetchDescriptor<T>()) }
+            let key = ObjectIdentifier(type)
+            if deletedTypes.contains(key) {
+                _ = try context.fetch(FetchDescriptor<T>())
+            } else if let ids = writtenIDs[key], !ids.isEmpty {
+                _ = try context.fetch(FetchDescriptor<T>(predicate: #Predicate { ids.contains($0.persistentModelID) }))
+            }
         }
         do {
-            try refresh(TrainingService.self)
-            try refresh(ServiceRate.self)
-            try refresh(ClientAppointmentPreference.self)
-            try refresh(TrainingSession.self)
-            try refresh(SessionParticipant.self)
-            try refresh(LessonPackage.self)
-            try refresh(PackageUse.self)
-            try refresh(LedgerEntry.self)
-            try refresh(Unavailability.self)
+            try PaolaSignpost.interval("refetch") {
+                try refresh(TrainingService.self)
+                try refresh(ServiceRate.self)
+                try refresh(ClientAppointmentPreference.self)
+                try refresh(TrainingSession.self)
+                try refresh(SessionParticipant.self)
+                try refresh(LessonPackage.self)
+                try refresh(PackageUse.self)
+                try refresh(LedgerEntry.self)
+                try refresh(Expense.self)
+                try refresh(Unavailability.self)
+            }
         } catch {
             throw ClientPersistenceError.refreshAfterSaveFailed(error)
         }
+        if touchesEconomy {
+            NotificationCenter.default.post(name: .paolaEconomicDataDidChange, object: nil)
+        }
     }
+}
+
+public extension Notification.Name {
+    /// Posted on the main actor after a committed write that touched ledger entries,
+    /// package uses, packages or expenses. Observers use it to refresh derived checks.
+    static let paolaEconomicDataDidChange = Notification.Name("local.paola.gestionale.economicDataDidChange")
 }

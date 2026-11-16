@@ -76,14 +76,13 @@ public struct BusinessArchive: Codable, Equatable {
         return archive
     }
 
-    @MainActor
     public static func capture(context: ModelContext) throws -> BusinessArchive {
         try uncanonicalizedCapture(context: context).canonicalized()
     }
 
     /// Validation does not depend on record order, so writes skip the sort.
-    @MainActor
     internal static func uncanonicalizedCapture(context: ModelContext) throws -> BusinessArchive {
+        try PaolaSignpost.interval("archive.capture") { () throws -> BusinessArchive in
         var archive = BusinessArchive()
         archive.services = try context.fetch(FetchDescriptor<TrainingService>()).map(ServiceRecord.init)
         archive.rates = try context.fetch(FetchDescriptor<ServiceRate>()).map(RateRecord.init)
@@ -99,6 +98,7 @@ public struct BusinessArchive: Codable, Equatable {
         archive.courses = try context.fetch(FetchDescriptor<Course>()).map(CourseRecord.init)
         archive.courseParticipants = try context.fetch(FetchDescriptor<CourseParticipant>()).map(CourseParticipantRecord.init)
         return archive
+        }
     }
 
     public func validate(clientIDs: Set<UUID>) throws {
@@ -146,94 +146,30 @@ public struct BusinessArchive: Codable, Equatable {
             try require(rate.sortOrder >= 0, "Ordine della tariffa non valido.")
         }
         for session in sessions {
-            try BusinessRules.date(session.startDate); try BusinessRules.date(session.createdAt)
-            try BusinessRules.date(session.updatedAt); try BusinessRules.duration(session.durationMinutes)
-            try BusinessRules.date(session.startDate.addingTimeInterval(Double(session.durationMinutes) * 60))
-            try require(SessionStatus(rawValue: session.statusRaw) != nil, "Stato lezione non valido.")
-            if let serviceID = session.serviceID {
-                try require(serviceIDs.contains(serviceID), "Servizio della lezione mancante.")
-            }
-            let pair = participantsBySession[session.id] ?? []
-            try require(!pair.isEmpty && Set(pair.map(\.clientID)).count == pair.count,
-                        "Una lezione richiede almeno un cliente, senza partecipanti duplicati.")
+            try BusinessArchiveRules.session(session, serviceIDs: serviceIDs,
+                                             participants: participantsBySession[session.id] ?? [])
         }
-        for package in packages {
-            try require(clientIDs.contains(package.clientID), "Cliente del pacchetto mancante.")
-            // La capienza si valida solo per i pacchetti a lezioni; quelli a tempo sono illimitati.
-            if PackageKind(rawValue: package.kindRaw) != .timed {
-                try BusinessRules.packageCapacity(package.capacity)
-            }
-            try BusinessRules.amount(package.priceCents); try BusinessRules.date(package.purchasedOn)
-            if let expiry = package.expiresOn {
-                try BusinessRules.date(expiry)
-                try require(Calendar.current.startOfDay(for: expiry) >= Calendar.current.startOfDay(for: package.purchasedOn),
-                            "La scadenza precede l'acquisto.")
-            }
-        }
+        for package in packages { try BusinessArchiveRules.package(package, clientIDs: clientIDs) }
         for participant in participants {
-            try require(clientIDs.contains(participant.clientID), "Cliente della lezione mancante.")
-            guard let session = sessionMap[participant.sessionID] else {
-                throw BusinessError.inconsistentData("Lezione del partecipante mancante.")
-            }
-            try BusinessRules.amount(participant.priceCents)
-            if let packageID = participant.packageID {
-                guard let package = packageMap[packageID], package.clientID == participant.clientID else {
-                    throw BusinessError.inconsistentData("Pacchetto non appartenente al cliente.")
-                }
-                try checkExpiry(package.expiresOn, sessionDate: session.startDate)
-            }
+            try BusinessArchiveRules.participant(participant, session: sessionMap[participant.sessionID],
+                package: participant.packageID.flatMap { packageMap[$0] }, clientIDs: clientIDs)
         }
         var useSources: [String: PackageUseRecord] = [:]
         for use in packageUses {
-            try BusinessRules.date(use.createdAt)
-            let source = BusinessRules.sessionSource(sessionID: use.sessionID, clientID: use.clientID)
-            try require(use.sourceKey.lowercased() == source, "Origine utilizzo pacchetto non valida.")
-            guard let package = packageMap[use.packageID],
-                  package.clientID == use.clientID,
-                  let session = sessionMap[use.sessionID], session.statusRaw == SessionStatus.completed.rawValue,
-                  (participantsBySession[use.sessionID] ?? []).contains(where: { $0.clientID == use.clientID && $0.packageID == use.packageID }) else {
-                throw BusinessError.inconsistentData("Utilizzo pacchetto senza lezione completata o cliente valido.")
-            }
-            if let prior = useSources[source] {
-                try require(prior.packageID == use.packageID, "Utilizzi duplicati incompatibili.")
-            }
-            useSources[source] = use
+            let source = try BusinessArchiveRules.packageUse(use, session: sessionMap[use.sessionID],
+                package: packageMap[use.packageID], sessionParticipants: participantsBySession[use.sessionID] ?? [])
+            try BusinessArchiveRules.registerUse(use, source: source, into: &useSources)
         }
         var useCounts: [UUID: Int] = [:]
         for use in useSources.values { useCounts[use.packageID, default: 0] += 1 }
-        for package in packages where PackageKind(rawValue: package.kindRaw) != .timed {
-            try require(useCounts[package.id, default: 0] <= package.capacity,
-                        "Il pacchetto supera il numero di lezioni disponibili.")
+        for package in packages {
+            try BusinessArchiveRules.packageCapacity(package, usedCount: useCounts[package.id, default: 0])
         }
         var sources: [String: LedgerRecord] = [:]
         for entry in ledgerEntries {
-            try require(clientIDs.contains(entry.clientID), "Cliente del movimento mancante.")
-            try BusinessRules.date(entry.date); try BusinessRules.date(entry.createdAt)
-            try BusinessRules.amount(entry.amountCents, positive: entry.kindRaw != LedgerKind.charge.rawValue)
-            guard let kind = LedgerKind(rawValue: entry.kindRaw), kind != .unknown,
-                  PaymentMethod(rawValue: entry.methodRaw) != nil else {
-                throw BusinessError.inconsistentData("Tipo movimento o metodo non valido.")
-            }
-            try require(!entry.sourceKey.isEmpty, "Origine movimento mancante.")
-            let key = entry.sourceKey.lowercased()
-            if let previous = sources[key] {
-                try require(previous.clientID == entry.clientID && previous.kindRaw == entry.kindRaw
-                    && previous.amountCents == entry.amountCents && previous.date == entry.date
-                    && previous.methodRaw == entry.methodRaw && previous.originalEntryID == entry.originalEntryID,
-                    "Movimenti con la stessa origine ma valori diversi.")
-            } else {
-                sources[key] = entry
-            }
-            if kind == .refund || kind == .credit {
-                guard let originalID = entry.originalEntryID, let original = entryMap[originalID],
-                      original.clientID == entry.clientID,
-                      original.kindRaw == (kind == .refund ? LedgerKind.payment.rawValue : LedgerKind.charge.rawValue) else {
-                    throw BusinessError.inconsistentData("Rettifica senza movimento originale valido.")
-                }
-                try require(entry.date >= original.date, "La rettifica precede il movimento originale.")
-            } else {
-                try require(entry.originalEntryID == nil, "Riferimento originale non valido.")
-            }
+            let kind = try BusinessArchiveRules.ledgerEntry(entry, clientIDs: clientIDs)
+            try BusinessArchiveRules.registerSource(entry, into: &sources)
+            try BusinessArchiveRules.adjustmentLink(entry, kind: kind, original: entry.originalEntryID.flatMap { entryMap[$0] })
         }
         let canonical = Array(sources.values)
         var totals: [LedgerKind: Int64] = [:]
@@ -277,34 +213,15 @@ public struct BusinessArchive: Codable, Equatable {
             }
         }
         for session in sessions {
-            for participant in participantsBySession[session.id] ?? [] {
-                let source = BusinessRules.sessionSource(sessionID: session.id, clientID: participant.clientID)
-                if session.statusRaw == "completed" {
-                    if participant.packageID != nil {
-                        try require(useSources[source] != nil && sources[source] == nil,
-                                    "La lezione a pacchetto richiede un solo utilizzo, senza addebito.")
-                    } else {
-                        expectedChargeSources.insert(source)
-                        let incomeSource = BusinessRules.sessionIncomeSource(sessionID: session.id, clientID: participant.clientID)
-                        expectedIncomeSources.insert(incomeSource)
-                        guard let charge = sources[source] else {
-                            throw BusinessError.inconsistentData("Addebito lezione mancante.")
-                        }
-                        try require(charge.kindRaw == "charge" && charge.clientID == participant.clientID
-                            && charge.amountCents == participant.priceCents && charge.date == session.startDate,
-                            "Addebito lezione incoerente.")
-                        if let income = sources[incomeSource] {
-                            try require(income.kindRaw == "payment" && income.clientID == participant.clientID
-                                && income.amountCents == participant.priceCents
-                                && PaymentMethod(rawValue: income.methodRaw) != nil,
-                                "Incasso lezione incoerente.")
-                        }
-                    }
-                } else {
-                    try require(sources[source] == nil && useSources[source] == nil,
-                                "Movimento presente per una lezione non completata.")
+            let sessionParticipants = participantsBySession[session.id] ?? []
+            if session.statusRaw == "completed" {
+                for participant in sessionParticipants where participant.packageID == nil {
+                    expectedChargeSources.insert(BusinessRules.sessionSource(sessionID: session.id, clientID: participant.clientID))
+                    expectedIncomeSources.insert(BusinessRules.sessionIncomeSource(sessionID: session.id, clientID: participant.clientID))
                 }
             }
+            try BusinessArchiveRules.sessionEconomics(session: session, participants: sessionParticipants,
+                                                      sources: sources, useSources: useSources)
         }
         for entry in canonical where entry.kindRaw == "charge" {
             try require(expectedChargeSources.contains(entry.sourceKey.lowercased()), "Addebito senza origine valida.")
@@ -331,13 +248,7 @@ public struct BusinessArchive: Codable, Equatable {
             try require(PaymentMethod(rawValue: invoice.paymentMethodRaw) != nil, "Metodo di pagamento della fattura non valido.")
         }
         // Spese: nome non vuoto, date finite, importo non negativo, tipo valido.
-        for expense in expenses {
-            try require(!expense.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "Nome della spesa mancante.")
-            try BusinessRules.date(expense.date); try BusinessRules.date(expense.createdAt)
-            try BusinessRules.date(expense.updatedAt)
-            try BusinessRules.amount(expense.amountCents)
-            try require(ExpenseKind(rawValue: expense.kindRaw) != nil, "Tipo di spesa non valido.")
-        }
+        for expense in expenses { try BusinessArchiveRules.expense(expense) }
         // Corsi: titolo non vuoto, almeno un giorno, orario e durata validi, date finite.
         let courseIDs = Set(courses.map(\.id))
         for course in courses {
@@ -409,10 +320,7 @@ public struct BusinessArchive: Codable, Equatable {
         guard condition else { throw BusinessError.inconsistentData(message) }
     }
     internal func checkExpiry(_ expiry: Date?, sessionDate: Date) throws {
-        if let expiry {
-            try require(Calendar.current.startOfDay(for: sessionDate) <= Calendar.current.startOfDay(for: expiry),
-                        "Il pacchetto è scaduto alla data della lezione.")
-        }
+        try BusinessArchiveRules.checkExpiry(expiry, sessionDate: sessionDate)
     }
 
     public struct ServiceRecord: Codable, Equatable {

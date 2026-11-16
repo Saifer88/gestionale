@@ -1,0 +1,50 @@
+Test Suite 'Selected tests' started at 2026-11-16 13:51:52.909.
+Test Suite 'PaolaAppTests.xctest' started at 2026-11-16 13:51:52.909.
+Test Suite 'AgendaWeeklyBenchmarkTests' started at 2026-11-16 13:51:52.910.
+Test Case '-[PaolaAppTests.AgendaWeeklyBenchmarkTests testWeeklyAgendaDatasetAndOperations]' started.
+Test Case '-[PaolaAppTests.AgendaWeeklyBenchmarkTests testWeeklyAgendaDatasetAndOperations]' passed (8.315 seconds).
+Test Suite 'AgendaWeeklyBenchmarkTests' passed at 2026-11-16 13:52:01.224.
+	 Executed 1 test, with 0 failures (0 unexpected) in 8.315 (8.315) seconds
+Test Suite 'PaolaAppTests.xctest' passed at 2026-11-16 13:52:01.224.
+	 Executed 1 test, with 0 failures (0 unexpected) in 8.315 (8.315) seconds
+Test Suite 'Selected tests' passed at 2026-11-16 13:52:01.224.
+	 Executed 1 test, with 0 failures (0 unexpected) in 8.315 (8.316) seconds
+[bench] dataset generato in 0.19 s: 40 clienti, 30 servizi, 786 appuntamenti (35/settimana), 906 partecipanti, 39 pacchetti, 846 movimenti
+[bench] agenda: fetch sessioni finestra settimana (49) | - | min 0.0005 | med 0.0005 | max 0.0010
+[bench] agenda: @Query non filtrate (partecipanti 906, clienti, blocchi, pacchetti, corsi) | - | min 0.0060 | med 0.0061 | max 0.0085
+[bench] agenda: makeSnapshot settimana (37 visibili) | - | min 0.0021 | med 0.0021 | max 0.0025
+[bench] agenda: snapshotKey (conteggi array già caricati) | - | min 0.0000 | med 0.0000 | max 0.0000
+[bench] validazione: uncanonicalizedCapture (fetch di tutto l'archivio) | .archive | min 0.0546 | med 0.0548 | max 0.0563
+[bench] validazione: validate(clientIDs:) su archivio già letto | .archive | min 0.0068 | med 0.0069 | max 0.0070
+[bench] validazione: integrityWarnings (fetch + calcolo) | .archive | min 0.0518 | med 0.0521 | max 0.0532
+[bench] completa appuntamento (1 partecipante, senza pacchetto) | .archive | min 0.1821 | med 0.1826 | max 0.1858
+[bench] completa appuntamento (1 partecipante, con pacchetto) | .archive | min 0.1834 | med 0.1836 | max 0.1860
+[bench] completa appuntamento (2 partecipanti, senza pacchetto) | .archive | min 0.1835 | med 0.1849 | max 0.1884
+[bench] completa appuntamento (2 partecipanti, uno con pacchetto) | .archive | min 0.1849 | med 0.1862 | max 0.1896
+[bench] completamento ripetuto (già completato) | .archive | min 0.1181 | med 0.1187 | max 0.1221
+[bench] segna partecipante pagato (setParticipantPaid) | .local | min 0.0001 | med 0.0008 | max 0.0010
+[bench] segna 10 lezioni pagate (setSessionsPaid) | .local | min 0.0023 | med 0.0024 | max 0.0025
+[bench] bianco/nero appuntamento (setSessionBlack) | .local | min 0.0001 | med 0.0004 | max 0.0005
+[bench] registra rimborso (recordRefund) | .archive | min 0.2060 | med 0.2201 | max 0.2372
+[bench] sposta appuntamento (rescheduleSession) | .local | min 0.0008 | med 0.0009 | max 0.0010
+[bench] annulla appuntamento (setSessionStatus cancelled) | .local | min 0.0004 | med 0.0005 | max 0.0005
+[bench] crea appuntamento (saveSession) | .local | min 0.0011 | med 0.0012 | max 0.0016
+[bench] acquisto pacchetto (savePackage) | .archive | min 0.1864 | med 0.1870 | max 0.1879
+[bench] crea indisponibilità (saveBlock) | .archive | min 0.1861 | med 0.1868 | max 0.1887
+Test Suite 'Selected tests' started at 2026-11-16 13:52:01.326.
+Test Suite 'PaolaCoreTests.xctest' started at 2026-11-16 13:52:01.327.
+Test Suite 'WritePerformanceTests' started at 2026-11-16 13:52:01.327.
+Test Case '-[PaolaCoreTests.WritePerformanceTests testLocalWritesOnLargeArchiveStayFast]' started.
+Test Case '-[PaolaCoreTests.WritePerformanceTests testLocalWritesOnLargeArchiveStayFast]' passed (1.732 seconds).
+Test Suite 'WritePerformanceTests' passed at 2026-11-16 13:52:03.060.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.732 (1.733) seconds
+Test Suite 'PaolaCoreTests.xctest' passed at 2026-11-16 13:52:03.060.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.732 (1.733) seconds
+Test Suite 'Selected tests' passed at 2026-11-16 13:52:03.060.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.732 (1.733) seconds
+[perf] setParticipantPaid: 1 ms
+[perf] setSessionBlack: 0 ms
+[perf] rescheduleSession: 1 ms
+[perf] saveSession: 1 ms
+[perf] setSessionStatus completed: 917 ms
+DONE

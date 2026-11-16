@@ -163,6 +163,13 @@ public struct BusinessStatistics {
 public enum BusinessReports {
     public static func integrityWarnings(entries: [LedgerEntry], packages: [LessonPackage],
                                          uses: [PackageUse]) -> [String] {
+        PaolaSignpost.interval("integrityWarnings") {
+            computeIntegrityWarnings(entries: entries, packages: packages, uses: uses)
+        }
+    }
+
+    private static func computeIntegrityWarnings(entries: [LedgerEntry], packages: [LessonPackage],
+                                                 uses: [PackageUse]) -> [String] {
         var warnings = Set<String>()
         func warn(_ message: String) { warnings.insert(message) }
         func duplicateIDs<T: AnyObject>(_ rows: [T], id: (T) -> UUID) -> Bool {

@@ -61,18 +61,59 @@ struct FormError: Identifiable {
     }
 }
 
+/// Avvisi di integrità calcolati fuori dal render, su un contesto separato
+/// (`ArchiveHealthChecker`). Il risultato è un calcolo derivato effimero tenuto solo in
+/// `@State`: non viene scritto né messo in cache. Si ricalcola al lancio (la vista viene
+/// ricreata dopo un ripristino), e dopo operazioni economiche con debounce.
 struct IntegrityStatusView: View {
-    @Query private var entries: [LedgerEntry]
-    @Query private var packages: [LessonPackage]
-    @Query private var uses: [PackageUse]
-
-    private var warnings: [String] {
-        BusinessReports.integrityWarnings(entries: entries, packages: packages, uses: uses)
-    }
+    @Environment(\.modelContext) private var context
+    @State private var warnings: [String] = []
+    @State private var failure: String?
+    @State private var revision = 0
+    /// Validazione completa dell'archivio solo al primo calcolo (lancio / dopo ripristino).
+    @State private var didRunFullValidation = false
+    /// Ultimo esito della validazione completa: riaggiunto a ogni refresh finché non si rilancia.
+    @State private var fullValidationMessage: String?
 
     var body: some View {
-        if let error = _entries.fetchError ?? _packages.fetchError ?? _uses.fetchError {
-            Label("Verifica dell'archivio non riuscita: \(error.localizedDescription)", systemImage: "exclamationmark.triangle")
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .paolaEconomicDataDidChange)) { _ in revision += 1 }
+            .task(id: revision) { await refresh() }
+    }
+
+    @MainActor
+    private func refresh() async {
+        // Debounce: più operazioni ravvicinate annullano il task precedente.
+        do { try await Task.sleep(for: .milliseconds(revision == 0 ? 300 : 800)) } catch { return }
+        let container = context.container
+        let runFull = !didRunFullValidation
+        do {
+            let signposter = PaolaSignpost.signposter
+            let state = signposter.beginInterval("integrity.refresh", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("integrity.refresh", state) }
+            let (result, full) = try await Task.detached(priority: .utility) { () throws -> ([String], String?) in
+                let checker = ArchiveHealthChecker(modelContainer: container)
+                let result = try await checker.integrityWarnings()
+                let full = runFull ? try await checker.fullValidation() : nil
+                return (result, full)
+            }.value
+            guard !Task.isCancelled else { return }
+            if runFull {
+                didRunFullValidation = true
+                fullValidationMessage = full
+            }
+            warnings = result + (fullValidationMessage.map { [$0] } ?? [])
+            failure = nil
+        } catch {
+            guard !Task.isCancelled else { return }
+            failure = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let failure {
+            Label("Verifica dell'archivio non riuscita: \(failure)", systemImage: "exclamationmark.triangle")
                 .font(.callout).padding().frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.orange.opacity(0.12))
         } else if !warnings.isEmpty {
