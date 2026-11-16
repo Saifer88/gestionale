@@ -888,7 +888,7 @@ Actions sullo stesso branch. Il repository configurato e' `Saifer88/gestionale`.
 ### Sequenza della pipeline
 
 1. Checkout del commit con credenziali Git non persistenti.
-2. Sul runner `macos-15`, verifica Xcode e Swift, poi esecuzione di `swift test`.
+2. Sul runner `macos-26`, verifica Xcode e Swift, poi esecuzione di `swift test`.
 3. Compilazione ottimizzata Release per Intel (`x86_64`) e Apple Silicon (`arm64`).
 4. Creazione e verifica del bundle universale, della firma ad hoc e dello ZIP.
 5. Calcolo SHA-256 e caricamento degli asset verificati come artifact di build.
